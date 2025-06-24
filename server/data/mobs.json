@@ -1,0 +1,8 @@
+{
+  "goblin001": {
+    "name": "Goblin",
+    "hp": 12,
+    "attack": 3,
+    "description": "A small, smelly goblin wielding a crooked dagger."
+  }
+}

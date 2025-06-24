@@ -1,0 +1,93 @@
+{
+  "healing_potion": {
+    "name": "Healing Potion",
+    "type": "consumable",
+    "effects": {
+      "heal": 10
+    },
+    "description": "Restores a small amount of HP.",
+    "weight": 0.2,
+    "equip_slot": null,
+    "container_capacity": 0
+  },
+  "iron_sword": {
+    "name": "Iron Sword",
+    "type": "weapon",
+    "effects": {
+      "damage": 5
+    },
+    "description": "A sturdy iron sword.",
+    "weight": 3.5,
+    "equip_slot": "Main Hand",
+    "container_capacity": 0
+  },
+  "iron_shield": {
+    "name": "Iron Shield",
+    "type": "armor",
+    "effects": {
+      "defense": 3
+    },
+    "description": "Provides decent protection.",
+    "weight": 4.0,
+    "equip_slot": "Off Hand",
+    "container_capacity": 0
+  },
+  "leather_armor": {
+    "name": "Leather Armor",
+    "description": "Light armor made of tanned leather.",
+    "type": "armor",
+    "weight": 5.0,
+    "equip_slots": [
+      "Chest"
+    ],
+    "min_damage": 0,
+    "max_damage": 0,
+    "capacity": 0,
+    "effects": {
+      "defense": 2
+    }
+  },
+  "ring_of_agility": {
+    "name": "Ring of Agility",
+    "type": "accessory",
+    "effects": {
+      "DEX": 1
+    },
+    "description": "Increases your agility slightly.",
+    "weight": 0.1,
+    "equip_slot": "Ring Right",
+    "container_capacity": 0
+  },
+  "backpack": {
+    "name": "Backpack",
+    "type": "container",
+    "effects": {},
+    "description": "A rugged leather backpack.",
+    "weight": 2.0,
+    "equip_slot": "Back",
+    "container_capacity": 30.0
+  },
+  "lantern": {
+    "name": "Lantern",
+    "type": "light",
+    "effects": {
+      "light_radius": 5
+    },
+    "description": "Illuminates dark places.",
+    "weight": 1.0,
+    "equip_slot": "Light Source",
+    "container_capacity": 0
+  },
+  "001": {
+    "name": "Cube of Fate",
+    "description": "This is an administration tool. Do not touch. Highly toxic and explosive.",
+    "type": "weapon",
+    "weight": 1.0,
+    "equip_slots": [
+      "Main Hand",
+      "Off Hand"
+    ],
+    "capacity": null,
+    "effects": {}
+  }
+}

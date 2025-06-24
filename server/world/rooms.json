@@ -1,0 +1,27 @@
+{
+  "start": {
+    "id": "start",
+    "name": "Lonely Clearing",
+    "description": "You stand in a quiet forest clearing. Birds chirp overhead. Exits lead north and east.",
+    "exits": {
+      "north": "deep_forest",
+      "east": "stream_bank"
+    }
+  },
+  "deep_forest": {
+    "id": "deep_forest",
+    "name": "Deep Forest",
+    "description": "Tall trees surround you. It's darker here. You feel watched.",
+    "exits": {
+      "south": "start"
+    }
+  },
+  "stream_bank": {
+    "id": "stream_bank",
+    "name": "Stream Bank",
+    "description": "A gentle stream flows by. The water is clear and cold.",
+    "exits": {
+      "west": "start"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "codybrown81": {
+    "password": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "current_room_id": "start",
+    "name": "codybrown81"
+  },
+  "dorkypickle": {
+    "password": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "current_room_id": "start",
+    "name": "dorkypickle"
+  },
+  "chickenpie": {
+    "password": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "current_room_id": "start",
+    "name": "chickenpie"
+  },
+  "Bawkington": {
+    "password": "9b8026f1ed618022eaee0b58453e6aef9748e3df237df785aed1d21c064ba718",
+    "current_room_id": "start",
+    "name": "Bawkington"
+  },
+  "Codybrown81": {
+    "password": "Antihack99!",
+    "characters": {
+      "Alistre": {
+        "name": "Alistre",
+        "current_room_id": "start",
+        "class": "Newbie",
+        "stats": {
+          "HP": 20,
+          "Mana": 10,
+          "STR": 5,
+          "DEX": 5,
+          "INT": 5,
+          "CON": 5,
+          "WIS": 5,
+          "CHA": 5
+        }
+      }
+    }
+  },
+  "biscuity": {
+    "password": "biscuits",
+    "characters": {
+      "Butterman": {
+        "name": "Butterman",
+        "current_room_id": "start",
+        "class": "Newbie",
+        "stats": {
+          "HP": 20,
+          "Mana": 10,
+          "STR": 5,
+          "DEX": 5,
+          "INT": 5,
+          "CON": 5,
+          "WIS": 5,
+          "CHA": 5
+        }
+      }
+    }
+  }
+}

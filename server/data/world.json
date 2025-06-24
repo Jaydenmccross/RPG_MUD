@@ -1,0 +1,44 @@
+{
+  "start": {
+    "description": "You stand in a quiet forest clearing. Birds chirp overhead. Exits lead north and east.",
+    "exits": {
+      "north": "mountain_path",
+      "east": "river_bank",
+      "west": "a_dead_end",
+      "south": "river_swimming"
+    }
+  },
+  "mountain_path": {
+    "description": "A steep path winds up the mountainside. The air is crisp and fresh.",
+    "exits": {
+      "south": "start"
+    }
+  },
+  "river_bank": {
+    "name": "River Bank",
+    "description": "You stand beside a flowing river. The water rushes past swiftly.",
+    "exits": {
+      "west": "start",
+      "south": "still_waters"
+    }
+  },
+  "still_waters": {
+    "description": "You find yourself standing in still waters. The cool caress of the stream feels nice and relaxing.",
+    "exits": {
+      "north": "river_bank"
+    }
+  },
+  "a_dead_end": {
+    "name": "A Dead End",
+    "description": "This room seems to be an end-of-the-road. There is nothing here. Odd.",
+    "exits": {
+      "east": "start"
+    }
+  },
+  "river_swimming": {
+    "description": "You make your way into the calming river and begin to take a relaxing swim.",
+    "exits": {
+      "north": "start"
+    }
+  }
+}
