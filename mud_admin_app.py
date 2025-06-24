@@ -7,10 +7,11 @@ WORLD_FILE = "server/data/world.json"
 ITEMS_FILE = "server/data/items.json"
 
 EQUIP_SLOTS = [
-    "Head", "Neck", "Back", "Shoulders", "Chest", "Wrists",
-    "Hands", "Ring Left", "Ring Right", "Legs", "Feet",
+    "Head", "Neck", "Chest", "Back", "Shoulders", "Wrists",
+    "Hands", "Weapon (Main Hand)", "Weapon (Off Hand)",
+    "Finger 1", "Finger 2", "Legs", "Feet",
     "Relic", "Light Source"
-]
+] # Standardized with Player.ALL_EQUIPMENT_SLOTS
 
 class ToolTip:
     def __init__(self, widget, text):
