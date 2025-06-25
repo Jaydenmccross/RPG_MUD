@@ -426,12 +426,17 @@ class ItemEditor(ttk.Frame):
         self.update_dynamic_fields(frame)
 
         def populate_listbox():
-            lb = frame.entries["item_listbox"]
-            lb.delete(0, tk.END)
-            filtered_items = [(iid, it) for iid, it in self.items.items() if it.get("type", "").lower() == default_type]
+            listbox_widget = frame.entries["item_listbox"] # Use a more descriptive name
+            listbox_widget.delete(0, tk.END)
+            # Use consistent and descriptive variable names
+            filtered_items = [
+                (item_id, item_data)
+                for item_id, item_data in self.items.items()
+                if item_data.get("type", "").lower() == default_type
+            ]
             for item_id, item_data in sorted(filtered_items, key=lambda x: x[0]):
                 display_name = item_data.get("name", "")
-                lb.insert(tk.END, f"{item_id} - {display_name}")
+                listbox_widget.insert(tk.END, f"{item_id} - {display_name}")
         populate_listbox()
 
         def on_listbox_select(event):
@@ -447,18 +452,24 @@ class ItemEditor(ttk.Frame):
         frame.entries["item_listbox"].bind("<<ListboxSelect>>", on_listbox_select)
 
         if not hasattr(self, 'refresh_all_item_lists_defined_flag'):
-            self.refresh_all_item_lists_defined_flag = True # Ensure it's defined only once conceptually
-            def refresh_all_lists():
-                for cat, f_tab in self.tabs.items():
-                    if "item_listbox" in f_tab.entries:
-                        lb = f_tab.entries["item_listbox"]
-                        lb.delete(0, tk.END)
-                        typ = self.category_types[cat]
-                        filtered = [(iid, it) for iid, it_data in self.items.items() if it_data.get("type", "").lower() == typ]
-                        for iid, it_data in sorted(filtered, key=lambda x: x[0]):
-                            display_name = it_data.get("name", "")
-                            lb.insert(tk.END, f"{iid} - {display_name}")
-            self.refresh_all_item_lists = refresh_all_lists
+            self.refresh_all_item_lists_defined_flag = True
+            def refresh_all_lists_function(): # Renamed for clarity from the outer scope 'refresh_all_item_lists' attribute
+                for category_name, tab_frame in self.tabs.items(): # Use descriptive names
+                    if "item_listbox" in tab_frame.entries: # Corrected f_t to tab_frame
+                        listbox_widget = tab_frame.entries["item_listbox"]
+                        listbox_widget.delete(0, tk.END)
+                        item_type_for_tab = self.category_types[category_name]
+
+                        # Use consistent and descriptive variable names
+                        filtered_items = [
+                            (item_id, item_data)
+                            for item_id, item_data in self.items.items()
+                            if item_data.get("type", "").lower() == item_type_for_tab
+                        ]
+                        for item_id, item_data in sorted(filtered_items, key=lambda x: x[0]):
+                            display_name = item_data.get("name", "")
+                            listbox_widget.insert(tk.END, f"{item_id} - {display_name}")
+            self.refresh_all_item_lists = refresh_all_lists_function # Assign the correctly named function
 
     def show_item_help(self):
         help_text = (
