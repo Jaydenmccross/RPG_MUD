@@ -1,93 +1,140 @@
 {
-  "healing_potion": {
-    "name": "Healing Potion",
-    "type": "consumable",
-    "effects": {
-      "heal": 10
-    },
-    "description": "Restores a small amount of HP.",
-    "weight": 0.2,
-    "equip_slot": null,
-    "container_capacity": 0
-  },
-  "iron_sword": {
-    "name": "Iron Sword",
+  "simple_sword": {
+    "name": "Simple Sword",
+    "description": "A basic, but reliable steel sword.",
     "type": "weapon",
-    "effects": {
-      "damage": 5
-    },
-    "description": "A sturdy iron sword.",
-    "weight": 3.5,
-    "equip_slot": "Main Hand",
-    "container_capacity": 0
-  },
-  "iron_shield": {
-    "name": "Iron Shield",
-    "type": "armor",
-    "effects": {
-      "defense": 3
-    },
-    "description": "Provides decent protection.",
-    "weight": 4.0,
-    "equip_slot": "Off Hand",
-    "container_capacity": 0
-  },
-  "leather_armor": {
-    "name": "Leather Armor",
-    "description": "Light armor made of tanned leather.",
-    "type": "armor",
-    "weight": 5.0,
-    "equip_slots": [
-      "Chest"
-    ],
-    "min_damage": 0,
-    "max_damage": 0,
-    "capacity": 0,
-    "effects": {
-      "defense": 2
+    "weight": 3.0,
+    "equip_slots": ["Weapon (Main Hand)", "Weapon (Off Hand)"],
+    "min_damage": 1,
+    "max_damage": 6,
+    "effects": {},
+    "properties": {
+      "two_handed": false,
+      "weapon_type": "martial_melee"
     }
   },
-  "ring_of_agility": {
-    "name": "Ring of Agility",
-    "type": "accessory",
-    "effects": {
-      "DEX": 1
-    },
-    "description": "Increases your agility slightly.",
-    "weight": 0.1,
-    "equip_slot": "Ring Right",
-    "container_capacity": 0
-  },
-  "backpack": {
-    "name": "Backpack",
-    "type": "container",
+  "great_axe": {
+    "name": "Great Axe",
+    "description": "A heavy axe that requires two hands to wield effectively.",
+    "type": "weapon",
+    "weight": 7.0,
+    "equip_slots": ["Weapon (Main Hand)"],
+    "min_damage": 1,
+    "max_damage": 12,
     "effects": {},
-    "description": "A rugged leather backpack.",
-    "weight": 2.0,
-    "equip_slot": "Back",
-    "container_capacity": 30.0
+    "properties": {
+      "two_handed": true,
+      "weapon_type": "martial_melee"
+    }
   },
-  "lantern": {
-    "name": "Lantern",
-    "type": "light",
+  "basic_leather_armor": {
+    "name": "Basic Leather Armor",
+    "description": "Armor made from cured animal hides.",
+    "type": "armor",
+    "weight": 10.0,
+    "equip_slots": ["Chest"],
     "effects": {
-      "light_radius": 5
+      "bonus_stats": {},
+      "bonus_ac": 0
     },
-    "description": "Illuminates dark places.",
-    "weight": 1.0,
-    "equip_slot": "Light Source",
-    "container_capacity": 0
+    "properties": {
+      "armor_type": "light",
+      "base_ac_value": 11
+    }
   },
-  "001": {
-    "name": "Cube of Fate",
-    "description": "This is an administration tool. Do not touch. Highly toxic and explosive.",
+  "chain_mail": {
+    "name": "Chain Mail",
+    "description": "Made of interlocking metal rings, chain mail offers good protection.",
+    "type": "armor",
+    "weight": 55.0,
+    "equip_slots": ["Chest"],
+    "effects": {
+        "bonus_stats": {},
+        "bonus_ac": 0
+    },
+    "properties": {
+        "armor_type": "heavy",
+        "base_ac_value": 16,
+        "strength_requirement": 13
+    }
+  },
+  "steel_shield": {
+    "name": "Steel Shield",
+    "description": "A standard shield made of steel.",
+    "type": "armor",
+    "weight": 6.0,
+    "equip_slots": ["Weapon (Off Hand)"],
+    "effects": {
+      "bonus_stats": {},
+      "bonus_ac": 2
+    },
+    "properties": {
+      "armor_type": "shield"
+    }
+  },
+  "gauntlets_of_strength": {
+    "name": "Gauntlets of Strength",
+    "description": "These sturdy gauntlets make your grip stronger.",
+    "type": "armor",
+    "weight": 2.0,
+    "equip_slots": ["Hands"],
+    "effects": {
+      "bonus_stats": {
+        "STR": 1
+      },
+      "bonus_ac": 0
+    },
+    "properties": {}
+  },
+  "amulet_of_health": {
+    "name": "Amulet of Health",
+    "description": "Amulet that enhances vitality.",
+    "type": "accessory",
+    "weight": 0.5,
+    "equip_slots": ["Neck"],
+    "effects": {
+      "bonus_stats": {
+        "CON": 1
+      },
+      "bonus_hp": 5
+    },
+    "properties": {}
+  },
+  "ring_of_protection_basic": {
+    "name": "Basic Ring of Protection",
+    "description": "A simple ring offering minor magical protection.",
+    "type": "accessory",
+    "weight": 0.1,
+    "equip_slots": ["Finger 1", "Finger 2"],
+    "effects": {
+        "bonus_ac": 1
+    },
+    "properties": {}
+  },
+  "healing_potion_minor": {
+    "name": "Minor Healing Potion",
+    "description": "A vial of red liquid that restores a small amount of health.",
+    "type": "consumable",
+    "weight": 0.5,
+    "equip_slots": [],
+    "effects": {
+        "heal_amount": 10
+    },
+    "properties": {}
+  },
+  "admin_cube": {
+    "name": "Admin Cube of Testing",
+    "description": "A mysterious cube for testing purposes.",
     "type": "weapon",
     "weight": 1.0,
-    "equip_slots": [
-      "Main Hand",
-      "Off Hand"
-    ],
-    "capacity": null,
-    "effects": {}
+    "equip_slots": ["Weapon (Main Hand)"],
+    "min_damage": 50,
+    "max_damage": 100,
+    "effects": {
+        "bonus_stats": {"STR":5, "DEX":5, "CON":5, "INT":5, "WIS":5, "CHA":5},
+        "bonus_ac": 10,
+        "bonus_hp": 50
+    },
+    "properties": {"two_handed": false}
   }
 }
