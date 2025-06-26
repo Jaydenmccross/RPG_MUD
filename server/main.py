@@ -382,21 +382,3 @@ def main(): # Unchanged
 
 if __name__ == "__main__":
     main()
-```
-
-**Key Changes in `main.py`:**
-1.  **Global Lists & Locks**: `CONNECTED_PLAYERS = []` and `players_lock = threading.Lock()` added.
-2.  **Helper Functions for `CONNECTED_PLAYERS`**:
-    *   `add_connected_player(player_instance)`: Adds a player to the global list, thread-safe.
-    *   `remove_connected_player(player_instance)`: Removes a player, thread-safe.
-3.  **`get_players_in_room(room_id_to_check)` Function Implemented**:
-    *   Iterates through `CONNECTED_PLAYERS` (with lock).
-    *   Checks `player.room.id` and `player.is_alive()`.
-    *   Returns a list of matching, live players in the specified room.
-4.  **`handle_client` Modifications**:
-    *   Calls `add_connected_player(player_instance)` after player is successfully initialized.
-    *   In the `finally` block, calls `remove_connected_player(player_instance)` to ensure players are removed from the global list upon disconnection.
-    *   Refined inventory loading and saving to work with `ItemInstance` expectations (saving `item_id` and `quantity`).
-5.  **`game_tick`**: Minor refinement in item respawn to correctly instantiate `Item` for `ItemInstance`. The main combat loop and aggressive AI logic will be added to `game_tick` in the next step of the plan.
-
-This step provides the necessary infrastructure (`CONNECTED_PLAYERS` list and `get_players_in_room` function) that will be used by the aggressive mob AI logic in the next step. It also makes player connection/disconnection handling more robust with respect to global lists.

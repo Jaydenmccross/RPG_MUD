@@ -275,16 +275,3 @@ class Player:
 
         inventory_list.append(f"{ANSI_GREEN}--------------------{ANSI_RESET}")
         return "\n".join(inventory_list)
-
-```
-**Changes made to `player.py`:**
-1.  **`display_inventory()` method added**:
-    *   Checks if `self.inventory` is empty.
-    *   If not, it iterates through `self.inventory`.
-    *   It handles two cases for items in inventory:
-        *   If an item is a dictionary (as it would be if unequipped), it gets the "name".
-        *   If an item is a string (placeholder for if inventory stores item IDs from a save file), it tries to look up the name in `ITEMS_DATA`, defaulting to showing the ID.
-    *   Formats the list with a header and footer.
-    *   (Note: This basic version doesn't handle item quantities or stacking explicitly. A more advanced inventory would use `ItemInstance` objects.)
-
-Now, for the `main.py` part.
