@@ -41,24 +41,85 @@ class Player:
         EQUIPMENT_SLOT_LIGHT_SOURCE
     ]
     STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
+    ALL_SKILLS = [
+        "Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception",
+        "History", "Insight", "Intimidation", "Investigation", "Medicine",
+        "Nature", "Perception", "Performance", "Persuasion", "Religion",
+        "Sleight of Hand", "Stealth", "Survival"
+    ]
+    SKILL_TO_ABILITY_MAP = {
+        "Acrobatics": "DEX", "Animal Handling": "WIS", "Arcana": "INT",
+        "Athletics": "STR", "Deception": "CHA", "History": "INT",
+        "Insight": "WIS", "Intimidation": "CHA", "Investigation": "INT",
+        "Medicine": "WIS", "Nature": "INT", "Perception": "WIS",
+        "Performance": "CHA", "Persuasion": "CHA", "Religion": "INT",
+        "Sleight of Hand": "DEX", "Stealth": "DEX", "Survival": "WIS"
+    }
 
-    def __init__(self, user, player_class_name="Fighter", race_name="Human", name="Adventurer"):
+    def __init__(self, user, player_class_name="Fighter", race_name="Human", name="Adventurer", base_stats=None):
         self.user = user; self.name = name; self.player_class_name = player_class_name
-        self.race_name = race_name; self.level = 1; self.xp = 0; self.next_level_xp = 300
-        self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
+        self.race_name = race_name # This is expected to be the specific key, e.g., "High Elf" or "Human"
+        self.level = 1; self.xp = 0; self.next_level_xp = 300 # TODO: Make next_level_xp dynamic
+
+        if base_stats: self.base_stats = base_stats.copy()
+        else: self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10} # Fallback
+
         self.current_hp = 0; self.max_hp = 0; self.temporary_hp = 0
-        self.current_mp = 0; self.max_mp = 0; self.spell_slots = {}
+        self.current_mp = 0; self.max_mp = 0; self.spell_slots = {} # TODO: Populate based on class
         self.equipment = {slot: None for slot in Player.ALL_EQUIPMENT_SLOTS}
-        self.inventory = [] # List of item data dictionaries or item IDs
-        self.room_id = "STARTING_ROOM_ID"
-        self.assign_standard_array({"STR":15,"DEX":14,"CON":13,"INT":12,"WIS":10,"CHA":8}, initial_setup=True)
+        self.inventory = []
+        self.room_id = "start" # Default starting room from UserManager constants
+        self.skill_proficiencies = set()
+
+        # Ensure data is loaded before trying to access it
+        if not (CLASSES_DATA and RACES_DATA): load_game_data()
+
+        # Populate skill proficiencies from class
+        class_data = CLASSES_DATA.get(self.player_class_name)
+        if class_data:
+            for skill in class_data.get("skill_proficiencies", []):
+                self.skill_proficiencies.add(skill)
+
+        # Populate skill proficiencies from race/subrace
+        base_race_data, sub_race_data = self._get_race_data_parts()
+        if base_race_data:
+            for trait in base_race_data.get("traits", []):
+                if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS : # Example: Elf
+                    self.skill_proficiencies.add("Perception")
+                if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS: # Example: Half-Orc
+                    self.skill_proficiencies.add("Intimidation")
+                # TODO: Handle "Skill Versatility" (Half-Elf) - requires player choice post-creation or default assignment. For now, none assigned.
+        if sub_race_data: # Sub-races usually don't grant skills directly, but could.
+             for trait in sub_race_data.get("traits", []): pass # Add if any sub-race traits grant skills
+
         self.recalculate_all_stats(full_heal=True)
 
+    def _get_race_data_parts(self):
+        if not RACES_DATA: return None, None
+        # self.race_name is expected to be the specific key, e.g., "High Elf" or "Human"
+        for r_name, r_info in RACES_DATA.items():
+            if r_name == self.race_name: # It's a base race
+                return r_info, None
+            if "subraces" in r_info and self.race_name in r_info["subraces"]: # It's a subrace
+                return r_info, r_info["subraces"][self.race_name]
+        return None, None # Race/Subrace not found
+
     def get_stat_score_racial_and_base(self, stat_name):
-        stat_name_upper = stat_name.upper(); score = self.base_stats.get(stat_name_upper, 10)
-        if RACES_DATA:
-            race_data = RACES_DATA.get(self.race_name)
-            if race_data: score += race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
+        stat_name_upper = stat_name.upper()
+        score = self.base_stats.get(stat_name_upper, 8) # Default to 8 if somehow missing
+
+        base_race_data, sub_race_data = self._get_race_data_parts()
+
+        if base_race_data:
+            score += base_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
+        if sub_race_data:
+            score += sub_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
+            # Handle Half-elf "other":2 case - this needs player input post-char-creation or a default.
+            # For now, we assume specific stats are in the JSON. UserManager should handle "other" if possible.
+            # If "other" is present, it implies UserManager didn't resolve it.
+            # This part of ASI logic is primarily for races like Human (+1 to all) or specific subrace bonuses.
+            # Half-elf's flexible +1s should ideally be incorporated into base_stats during creation.
+
         return score
 
     def get_stat_score(self, stat_name):
@@ -66,10 +127,24 @@ class Player:
         stat_name_upper = stat_name.upper()
         for item_data in self.equipment.values():
             if item_data: score += item_data.get("effects", {}).get("bonus_stats", {}).get(stat_name_upper, 0)
-        return min(score, 50)
+        return min(score, 50) # Assuming a cap of 50 for stats after all bonuses.
 
     def get_stat_modifier(self, stat_name):
         return math.floor((self.get_stat_score(stat_name) - 10) / 2)
+
+    def get_skill_bonus(self, skill_name):
+        if skill_name not in Player.SKILL_TO_ABILITY_MAP:
+            # print(f"Warning: Skill '{skill_name}' not recognized.")
+            return 0 # Or handle as an error
+
+        ability_stat = Player.SKILL_TO_ABILITY_MAP[skill_name]
+        modifier = self.get_stat_modifier(ability_stat)
+
+        prof_bonus = 0
+        if skill_name in self.skill_proficiencies:
+            prof_bonus = self.proficiency_bonus
+
+        return modifier + prof_bonus
 
     def calculate_proficiency_bonus(self):
         if self.level < 5: return 2;
@@ -94,13 +169,33 @@ class Player:
         hit_die = class_data.get("hit_die", 6); con_modifier = self.get_stat_modifier("CON"); max_hp_val = 0
         if self.level == 1: max_hp_val = hit_die + con_modifier
         else:
-            hp_per_level = max(1, math.ceil(hit_die / 2) + con_modifier)
+            # For levels > 1, average roll (or fixed value) + con_modifier per level
+            # Using ceil(hit_die / 2) + 1 as a common way to represent "average rounded up" or slightly better than just half.
+            # Or more simply, hit_die / 2 + 1 for average, then add con_mod.
+            # Let's use (hit_die / 2 + 0.5) which is average, then add con_mod, ensuring at least 1.
+            hp_gain_per_level_after_1 = max(1, math.floor(hit_die / 2) + 1 + con_modifier) # More generous like some systems
+            # Or stricter D&D 5e PHB rule: (hit_die/2 + 1) or roll. For auto-calc:
+            # hp_gain_per_level_after_1 = max(1, math.ceil(hit_die / 2.0) + con_modifier) # if using average rounded up.
+            # Let's stick to a simpler (hit_die / 2 + 1) + con_modifier, min 1.
+            avg_roll_plus_one = (hit_die // 2) + 1
+            hp_per_level = max(1, avg_roll_plus_one + con_modifier)
             max_hp_val = (hit_die + con_modifier) + (hp_per_level * (self.level - 1))
-        if RACES_DATA:
-            race_data = RACES_DATA.get(self.race_name, {})
-            if race_data and any(trait.get("name") == "Dwarven Toughness" for trait in race_data.get("traits",[])): max_hp_val += self.level
+
+        # Racial HP bonuses (e.g., Dwarven Toughness)
+        base_race_data, sub_race_data = self._get_race_data_parts()
+        racial_traits = []
+        if base_race_data and base_race_data.get("traits"): racial_traits.extend(base_race_data.get("traits"))
+        if sub_race_data and sub_race_data.get("traits"): racial_traits.extend(sub_race_data.get("traits"))
+
+        for trait in racial_traits:
+            if trait.get("name") == "Dwarven Toughness":
+                max_hp_val += self.level
+                break
+
+        # Equipment HP bonuses
         for item_data in self.equipment.values():
             if item_data: max_hp_val += item_data.get("effects", {}).get("bonus_hp", 0)
+
         return max(1, max_hp_val)
 
     def calculate_ac(self):
@@ -147,11 +242,8 @@ class Player:
             if self.current_hp <= 0 and self.max_hp > 0: self.current_hp = 1
         self.ac = self.calculate_ac()
 
-    def assign_standard_array(self, assignment_map, initial_setup=False):
-        if sorted(assignment_map.values())==sorted(self.STANDARD_ARRAY) and set(assignment_map.keys())==set(self.base_stats.keys()):
-            self.base_stats = assignment_map.copy()
-            if not initial_setup: self.recalculate_all_stats(full_heal=True)
-        else: print(f"Error: Invalid standard array assignment for {self.name}.")
+    # assign_standard_array is removed as UserManager now handles initial stat assignment
+    # and passes base_stats to __init__.
 
     def add_xp(self, amount):
         self.xp += amount
@@ -248,6 +340,40 @@ class Player:
             item_name = item.get('name', 'Nothing') if item else f"{ANSI_RED}Nothing{ANSI_RESET}"
             if item and item_name != f"{ANSI_RED}Nothing{ANSI_RESET}": item_name = f"{ANSI_GREEN}{item_name}{ANSI_RESET}"
             sheet.append(f"  {slot:<20}: {item_name}")
+
+        # Add Skills section
+        sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
+        sheet.append("Skills: (Bonus) [* Proficient]")
+        sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
+
+        # Determine column width for skills for better alignment
+        # max_skill_name_len = 0
+        # if Player.ALL_SKILLS: # Ensure ALL_SKILLS is not empty
+        #    max_skill_name_len = max(len(s) for s in Player.ALL_SKILLS) if Player.ALL_SKILLS else 20
+
+        # Display skills in two columns for brevity if possible
+        num_skills = len(Player.ALL_SKILLS)
+        mid_point = (num_skills + 1) // 2
+
+        for i in range(mid_point):
+            skill1_name = Player.ALL_SKILLS[i]
+            skill1_bonus = self.get_skill_bonus(skill1_name)
+            skill1_prof_char = "*" if skill1_name in self.skill_proficiencies else " "
+            skill1_bonus_str = f"+{skill1_bonus}" if skill1_bonus >= 0 else str(skill1_bonus)
+            # Left column: Skill (Ability) [*] Bonus
+            skill1_display = f"  {skill1_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill1_name, '???'):<3}) [{skill1_prof_char}] {skill1_bonus_str:>3}"
+
+            if i + mid_point < num_skills:
+                skill2_name = Player.ALL_SKILLS[i + mid_point]
+                skill2_bonus = self.get_skill_bonus(skill2_name)
+                skill2_prof_char = "*" if skill2_name in self.skill_proficiencies else " "
+                skill2_bonus_str = f"+{skill2_bonus}" if skill2_bonus >= 0 else str(skill2_bonus)
+                # Right column: Skill (Ability) [*] Bonus
+                skill2_display = f"  {skill2_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill2_name, '???'):<3}) [{skill2_prof_char}] {skill2_bonus_str:>3}"
+                sheet.append(f"{skill1_display.ljust(40)} {skill2_display}")
+            else:
+                sheet.append(skill1_display)
+
         sheet.append(f"{ANSI_GREEN}--- End of Sheet ---{ANSI_RESET}")
         return "\n".join(sheet)
 

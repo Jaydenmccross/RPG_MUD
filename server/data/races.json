@@ -1,12 +1,16 @@
 {
   "Human": {
+    "description": "Humans are the most adaptable and ambitious people among the common races. Whatever drives them, humans are the innovators, the achievers, and the pioneers of the worlds.",
     "ability_score_increase": {"STR": 1, "DEX": 1, "CON": 1, "INT": 1, "WIS": 1, "CHA": 1},
     "speed": 30,
     "size": "Medium",
     "languages": ["Common", "one extra of your choice"],
-    "traits": []
+    "traits": [
+      {"name": "Versatile", "description": "Humans are known for their adaptability, reflected in their balanced ability scores and broad potential."}
+    ]
   },
   "Elf": {
+    "description": "Elves are a magical people of otherworldly grace, living in the world but not entirely part of it. They live long lives and are often perceived as aloof and unconcerned with the affairs of 'shorter-lived' races.",
     "ability_score_increase": {"DEX": 2},
     "speed": 30,
     "size": "Medium",
@@ -19,6 +23,7 @@
     ],
     "subraces": {
       "High Elf": {
+        "description": "High elves are heirs of a long line of elven wizards and warriors, valuing study and artistry. They are often found in places of learning and ancient power.",
         "ability_score_increase": {"INT": 1},
         "traits": [
           {"name": "Elf Weapon Training", "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow."},
@@ -26,6 +31,7 @@
         ]
       },
       "Wood Elf": {
+        "description": "Wood elves are nimble and stealthy hunters, at home in the depths of ancient forests. They are known for their keen senses and ability to move like shadows.",
         "ability_score_increase": {"WIS": 1},
         "traits": [
           {"name": "Elf Weapon Training", "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow."},
@@ -36,25 +42,28 @@
     }
   },
   "Dwarf": {
+    "description": "Dwarves are stout and resilient folk, known for their skill in smithing, mining, and warfare. They value tradition, clan, and the treasures of the earth.",
     "ability_score_increase": {"CON": 2},
     "speed": 25,
     "size": "Medium",
     "languages": ["Common", "Dwarvish"],
     "traits": [
-      {"name": "Darkvision", "description": "Accustomed to life underground, you have superior vision in dark and dim conditions..."},
+      {"name": "Darkvision", "description": "Accustomed to life underground, you have superior vision in dark and dim conditions. You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can’t discern color in darkness, only shades of gray."},
       {"name": "Dwarven Resilience", "description": "You have advantage on saving throws against poison, and you have resistance against poison damage."},
       {"name": "Dwarven Combat Training", "description": "You have proficiency with the battleaxe, handaxe, light hammer, and warhammer."},
       {"name": "Tool Proficiency", "description": "You gain proficiency with the artisan’s tools of your choice: smith’s tools, brewer’s supplies, or mason’s tools."},
-      {"name": "Stonecunning", "description": "Whenever you make an Intelligence (History) check related to the origin of stonework, you are considered proficient in the History skill and add double your proficiency bonus..."}
+      {"name": "Stonecunning", "description": "Whenever you make an Intelligence (History) check related to the origin of stonework, you are considered proficient in the History skill and add double your proficiency bonus to the check, instead of your normal proficiency bonus."}
     ],
     "subraces": {
       "Hill Dwarf": {
+        "description": "Hill dwarves are known for their exceptional hardiness and strong intuition. They are often found in well-fortified communities in hilly terrains.",
         "ability_score_increase": {"WIS": 1},
         "traits": [
           {"name": "Dwarven Toughness", "description": "Your hit point maximum increases by 1, and it increases by 1 every time you gain a level."}
         ]
       },
       "Mountain Dwarf": {
+        "description": "Mountain dwarves are strong and heavily armored, accustomed to rugged mountain life. They are often more martial than their hill dwarf cousins.",
         "ability_score_increase": {"STR": 2},
         "traits": [
           {"name": "Dwarven Armor Training", "description": "You have proficiency with light and medium armor."}
@@ -63,6 +72,7 @@
     }
   },
   "Halfling": {
+    "description": "Halflings are cheerful and curious folk who value the comforts of home and hearth. They are known for their luck, bravery, and surprising agility.",
     "ability_score_increase": {"DEX": 2},
     "speed": 25,
     "size": "Small",
@@ -74,12 +84,14 @@
     ],
     "subraces": {
       "Lightfoot Halfling": {
+        "description": "Lightfoot halflings are more prone to wanderlust than other halflings, and often possess a natural stealth that allows them to avoid notice.",
         "ability_score_increase": {"CHA": 1},
         "traits": [
           {"name": "Naturally Stealthy", "description": "You can attempt to hide even when you are obscured only by a creature that is at least one size larger than you."}
         ]
       },
       "Stout Halfling": {
+        "description": "Stout halflings are hardier than their cousins and have a strong resistance to toxins. They are often more settled and less prone to travel.",
         "ability_score_increase": {"CON": 1},
         "traits": [
           {"name": "Stout Resilience", "description": "You have advantage on saving throws against poison, and you have resistance against poison damage."}
@@ -88,6 +100,7 @@
     }
   },
   "Dragonborn": {
+    "description": "Dragonborn are proud, draconic humanoids who trace their ancestry to mighty dragons. They are known for their honor, martial prowess, and powerful breath weapons.",
     "ability_score_increase": {"STR": 2, "CHA": 1},
     "speed": 30,
     "size": "Medium",
@@ -111,61 +124,67 @@
     ]
   },
   "Gnome": {
+    "description": "Gnomes are small, curious humanoids known for their inventiveness, humor, and love of intricate mechanisms or the natural world.",
     "ability_score_increase": {"INT": 2},
     "speed": 25,
     "size": "Small",
     "languages": ["Common", "Gnomish"],
     "traits": [
-      {"name": "Darkvision", "description": "Accustomed to life underground, you have superior vision in dark and dim conditions..."},
+      {"name": "Darkvision", "description": "Accustomed to life underground, you have superior vision in dark and dim conditions. You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can’t discern color in darkness, only shades of gray."},
       {"name": "Gnome Cunning", "description": "You have advantage on all Intelligence, Wisdom, and Charisma saving throws against magic."}
     ],
     "subraces": {
       "Forest Gnome": {
+        "description": "Forest gnomes are shy and reclusive, preferring the tranquility of wooded areas. They have a natural talent for illusion and a kinship with small animals.",
         "ability_score_increase": {"DEX": 1},
         "traits": [
           {"name": "Natural Illusionist", "description": "You know the Minor Illusion cantrip. Intelligence is your spellcasting ability for it."},
-          {"name": "Speak with Small Beasts", "description": "Through sounds and gestures, you can communicate simple ideas with Small or smaller beasts..."}
+          {"name": "Speak with Small Beasts", "description": "Through sounds and gestures, you can communicate simple ideas with Small or smaller beasts."}
         ]
       },
       "Rock Gnome": {
+        "description": "Rock gnomes are master artisans and engineers, fascinated by clockwork devices and invention. They are often found in bustling workshops and underground cities.",
         "ability_score_increase": {"CON": 1},
         "traits": [
-          {"name": "Artificer's Lore", "description": "Whenever you make an Intelligence (History) check related to magic items, alchemical objects, or technological devices, you can add twice your proficiency bonus..."},
-          {"name": "Tinker", "description": "You have proficiency with artisan’s tools (tinker’s tools). Using those tools, you can spend 1 hour and 10 gp worth of materials to construct a Tiny clockwork device..."}
+          {"name": "Artificer's Lore", "description": "Whenever you make an Intelligence (History) check related to magic items, alchemical objects, or technological devices, you can add twice your proficiency bonus, instead of your normal proficiency bonus."},
+          {"name": "Tinker", "description": "You have proficiency with artisan’s tools (tinker’s tools). Using those tools, you can spend 1 hour and 10 gp worth of materials to construct a Tiny clockwork device (AC 5, 1 hp) from three categories: Clockwork Toy, Fire Starter, or Music Box."}
         ]
       }
     }
   },
   "Half-Elf": {
-    "ability_score_increase": {"CHA": 2, "other": 2},
+    "description": "Half-elves combine the best qualities of their human and elven parentage. They are charismatic, versatile, and possess a touch of fey grace, often feeling like outsiders in both human and elven societies.",
+    "ability_score_increase": {"CHA": 2, "note": "Plus, two other ability scores of your choice increase by 1."},
     "speed": 30,
     "size": "Medium",
     "languages": ["Common", "Elvish", "one extra of your choice"],
     "traits": [
-      {"name": "Darkvision", "description": "Thanks to your elf blood, you have superior vision in dark and dim conditions..."},
+      {"name": "Darkvision", "description": "Thanks to your elf blood, you have superior vision in dark and dim conditions. You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can’t discern color in darkness, only shades of gray."},
       {"name": "Fey Ancestry", "description": "You have advantage on saving throws against being charmed, and magic can’t put you to sleep."},
       {"name": "Skill Versatility", "description": "You gain proficiency in two skills of your choice."}
     ]
   },
   "Half-Orc": {
+    "description": "Half-orcs combine the strength and ferocity of their orcish heritage with the adaptability of humans. They are often intense individuals, driven by strong emotions and a desire to prove themselves.",
     "ability_score_increase": {"STR": 2, "CON": 1},
     "speed": 30,
     "size": "Medium",
     "languages": ["Common", "Orc"],
     "traits": [
-      {"name": "Darkvision", "description": "Thanks to your orc blood, you have superior vision in dark and dim conditions..."},
+      {"name": "Darkvision", "description": "Thanks to your orc blood, you have superior vision in dark and dim conditions. You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can’t discern color in darkness, only shades of gray."},
       {"name": "Menacing", "description": "You gain proficiency in the Intimidation skill."},
       {"name": "Relentless Endurance", "description": "When you are reduced to 0 hit points but not killed outright, you can drop to 1 hit point instead. You can’t use this feature again until you finish a long rest."},
       {"name": "Savage Attacks", "description": "When you score a critical hit with a melee weapon attack, you can roll one of the weapon’s damage dice one additional time and add it to the extra damage of the critical hit."}
     ]
   },
   "Tiefling": {
+    "description": "Tieflings are humanoids who carry the blood of fiends, granting them infernal power and a striking appearance. They often face suspicion but possess a strong sense of self and a natural charisma.",
     "ability_score_increase": {"INT": 1, "CHA": 2},
     "speed": 30,
     "size": "Medium",
     "languages": ["Common", "Infernal"],
     "traits": [
-      {"name": "Darkvision", "description": "Thanks to your infernal heritage, you have superior vision in dark and dim conditions..."},
+      {"name": "Darkvision", "description": "Thanks to your infernal heritage, you have superior vision in dark and dim conditions. You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can’t discern color in darkness, only shades of gray."},
       {"name": "Hellish Resistance", "description": "You have resistance to fire damage."},
       {"name": "Infernal Legacy", "description": "You know the Thaumaturgy cantrip. When you reach 3rd level, you can cast the Hellish Rebuke spell as a 2nd-level spell once with this trait and regain the ability to do so when you finish a long rest. When you reach 5th level, you can cast the Darkness spell once with this trait and regain the ability to do so when you finish a long rest. Charisma is your spellcasting ability for these spells."}
     ]

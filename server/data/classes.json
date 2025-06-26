@@ -134,10 +134,14 @@
   },
   "Fighter": {
     "hit_die": 10,
+    "description": "A master of martial combat, skilled with a variety of weapons and armor. Fighters are versatile warriors who can adapt to any battlefield.",
     "primary_ability": ["STR", "DEX"],
+    "primary_ability_description": "Strength (STR) enhances your attack and damage with melee weapons. Dexterity (DEX) can be used for finesse weapons and improves Armor Class with lighter armors. Constitution (CON) increases your hit points, making you more durable.",
+    "recommended_stat_priority": ["STR", "CON", "DEX"],
     "saving_throw_proficiencies": ["STR", "CON"],
     "armor_proficiencies": ["light", "medium", "heavy", "shields"],
     "weapon_proficiencies": ["simple", "martial"],
+    "skill_proficiencies": ["Athletics", "Perception"],
     "spellcasting_ability": null,
     "asi_levels": [4, 6, 8, 12, 14, 16, 19], // Fighters get more ASIs
     "features_by_level": {
@@ -225,10 +229,14 @@
   },
   "Rogue": {
     "hit_die": 8,
+    "description": "A cunning and elusive adventurer, relying on stealth, skill, and trickery. Rogues excel at finding and disabling traps, picking locks, and striking when least expected.",
     "primary_ability": ["DEX"],
+    "primary_ability_description": "Dexterity (DEX) is your most important ability, affecting your Armor Class, attack and damage with finesse or ranged weapons, and many of your crucial skills. Constitution (CON) boosts your hit points.",
+    "recommended_stat_priority": ["DEX", "CON", "CHA"],
     "saving_throw_proficiencies": ["DEX", "INT"],
     "armor_proficiencies": ["light"],
     "weapon_proficiencies": ["simple", "hand crossbows", "longswords", "rapiers", "shortswords"],
+    "skill_proficiencies": ["Stealth", "Sleight of Hand", "Acrobatics", "Perception"],
     "tool_proficiencies": ["Thieves' tools"],
     "spellcasting_ability": null, // Arcane Trickster is subclass
     "asi_levels": [4, 8, 10, 12, 16, 19], // Rogues get an extra ASI at 10
@@ -303,10 +311,14 @@
   },
   "Wizard": {
     "hit_die": 6,
+    "description": "A scholarly magic-user who studies the arcane arts to manipulate reality. Wizards command powerful spells through intellect and preparation.",
     "primary_ability": ["INT"],
+    "primary_ability_description": "Intelligence (INT) is your key ability, determining the power of your spells, the number of spells you can prepare, and your spell attack bonus and save DC. Constitution (CON) helps you maintain concentration on spells and increases your hit points.",
+    "recommended_stat_priority": ["INT", "CON", "DEX"],
     "saving_throw_proficiencies": ["INT", "WIS"],
     "armor_proficiencies": [],
     "weapon_proficiencies": ["daggers", "darts", "slings", "quarterstaffs", "light crossbows"],
+    "skill_proficiencies": ["Arcana", "Investigation"],
     "spellcasting_ability": "INT",
     "spell_slots_by_level": "FULL_CASTER_SLOTS", // Reference or copy
     "cantrips_known_by_level": {"1":3, "4":4, "10":5},

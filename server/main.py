@@ -144,12 +144,20 @@ def handle_client(conn, addr):
     print(f"[+] Connection from {addr}")
     player_instance = None; username = None; user_data = None
     try:
-        username, user_data = UserManager.authenticate_or_create(conn)
-        if not username: conn.close(); print(f"[-] Auth failed: {addr}"); return
+        username, user_data = UserManager.authenticate_or_create(conn) # user_data is character_data
+        if not username or not user_data: # Ensure user_data is also present
+            if conn: conn.close()
+            print(f"[-] Auth failed or no character data for {addr}")
+            return
 
-        player_name = user_data.get("name", username); player_class = user_data.get("player_class", "Fighter"); player_race = user_data.get("player_race", "Human")
+        # Extract data for Player constructor
+        # UserManager now ensures these fields exist with defaults if loading older data
+        player_name = user_data.get("name", username) # Fallback to username if name somehow missing
+        player_class_name = user_data.get("player_class_name", "Fighter") # Default from UserManager
+        player_race_name = user_data.get("race_name", "Human") # Default from UserManager, specific key
+        player_base_stats = user_data.get("base_stats") # This will be a dict from UserManager
 
-        class TempUser: # Unchanged
+        class TempUser:
             def __init__(self, c, u): self.connection=c; self.username=u
             def send_message(self, msg):
                 if self.connection:
@@ -162,8 +170,26 @@ def handle_client(conn, addr):
                 return None
 
         temp_user_for_player = TempUser(conn, username)
-        player_instance = Player(user=temp_user_for_player, player_class_name=player_class, race_name=player_race, name=player_name)
-        add_connected_player(player_instance) # Add to global list
+
+        # Instantiate Player with all necessary data, including base_stats
+        player_instance = Player(
+            user=temp_user_for_player,
+            player_class_name=player_class_name,
+            race_name=player_race_name,
+            name=player_name,
+            base_stats=player_base_stats # Pass the loaded base_stats dictionary
+        )
+        # Player __init__ will now use these base_stats and then call recalculate_all_stats.
+
+        add_connected_player(player_instance)
+
+        # Initialize player's level, xp, current_hp from saved data *after* initial stat calculation
+        player_instance.level = user_data.get("level", 1)
+        player_instance.xp = user_data.get("xp", 0)
+        # recalculate_all_stats (called in Player init) sets current_hp to max_hp by default.
+        # Override with saved current_hp if it's valid.
+        saved_hp = user_data.get("current_hp", player_instance.max_hp)
+        player_instance.current_hp = min(saved_hp, player_instance.max_hp) if saved_hp > 0 else player_instance.max_hp
 
         player_instance.room_id = user_data.get("current_room_id", "start")
         current_room_obj = world.get(player_instance.room_id, world.get("start"))
@@ -354,7 +380,12 @@ def handle_client(conn, addr):
                     {"item_id": inv_item.item_blueprint.id, "quantity": inv_item.quantity}
                     for inv_item in player_instance.inventory if hasattr(inv_item, 'item_blueprint')
                 ]
-                user_data["level"]=player_instance.level; user_data["xp"]=player_instance.xp; user_data["current_hp"]=player_instance.current_hp
+                user_data["level"]=player_instance.level
+                user_data["xp"]=player_instance.xp
+                user_data["current_hp"]=player_instance.current_hp
+                user_data["base_stats"] = player_instance.base_stats # Ensure base stats are saved
+                user_data["race_name"] = player_instance.race_name # Ensure race name is saved
+                user_data["player_class_name"] = player_instance.player_class_name # Ensure class name is saved
                 UserManager.save_user_data(username, user_data)
                 print(f"[*] Player {player_instance.name} data saved for user {username}.")
         try:
