@@ -6,13 +6,13 @@ from server.core.user import UserManager
 from server.core.player import Player, ITEMS_DATA as PLAYER_ITEMS_DATA, load_game_data as core_load_game_data
 from server.core.room import Room
 from server.core.content import Mob, Item, ItemInstance, MobInstance, ContainerInstance
-from server.core.combat import resolve_attack
+from server.core.combat import resolve_attack # Added combat import
 
 HOST = "127.0.0.1"
 PORT = 4000
 GAME_TICK_INTERVAL = 10
 
-world = {} # This will store Room objects, keyed by room_id
+world = {}
 mobs_blueprints = {}
 
 ACTIVE_COMBATANTS = []
@@ -49,7 +49,8 @@ COMMAND_ALIASES = {
     "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
     "secondwind": "secondwind",
     "rest": "rest",
-    "dash": "dash"
+    "dash": "dash",
+    "cast": "cast" # Added cast
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -203,7 +204,7 @@ def handle_client(conn, addr):
         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
 
         while player_instance.is_alive():
-            player_instance.reset_turn_actions() # Reset action flag at the start of each command input cycle
+            player_instance.reset_turn_actions()
 
             temp_user_for_player.send_message("\r\n> ")
             msg = temp_user_for_player.read_line()
@@ -267,7 +268,7 @@ def handle_client(conn, addr):
                     if len(args) > 1: target_slot = USER_FRIENDLY_SLOT_MAP.get(" ".join(args[1:]).lower())
                     result = player_instance.equip_item(item_ref, target_slot)
                     temp_user_for_player.send_message(result)
-                    if not result.startswith(("Cannot","You don't have","Invalid","Could not")): # Crude check for success
+                    if not result.startswith(("Cannot","You don't have","Invalid","Could not")):
                         player_instance.has_taken_action_this_turn = True
                 responded = True
             elif command_word == "remove":
@@ -364,7 +365,6 @@ def handle_client(conn, addr):
                         temp_user_for_player.send_message(f"Unknown direction: '{direction_input}'.")
                     else:
                         dash_result = player_instance.use_dash(direction_to_dash, world)
-
                         if isinstance(dash_result, str):
                             temp_user_for_player.send_message(dash_result)
                         elif isinstance(dash_result, dict) and dash_result.get("success"):
@@ -377,6 +377,70 @@ def handle_client(conn, addr):
                              temp_user_for_player.send_message(dash_result.get("message", "You cannot dash right now."))
                         else:
                             temp_user_for_player.send_message("An unexpected error occurred with dashing.")
+                responded = True
+            elif command_word == "cast":
+                if len(args) < 2: # Needs at least spell name and target
+                    temp_user_for_player.send_message("Usage: cast \"<spell name>\" <target_name>")
+                else:
+                    # Handle multi-word spell names if quoted
+                    spell_name_input = ""
+                    target_name_parts = []
+                    if args[0].startswith("\""):
+                        spell_name_buffer = []
+                        in_quote = False
+                        for i, part in enumerate(args):
+                            if part.startswith("\""):
+                                in_quote = True
+                                spell_name_buffer.append(part[1:])
+                            elif in_quote:
+                                if part.endswith("\""):
+                                    spell_name_buffer.append(part[:-1])
+                                    in_quote = False
+                                    target_name_parts = args[i+1:]
+                                    break
+                                else:
+                                    spell_name_buffer.append(part)
+                            else: # First word wasn't quoted, assume single word spell name
+                                spell_name_input = args[0]
+                                target_name_parts = args[1:]
+                                break
+                        if not spell_name_input: # If it was a quote
+                             spell_name_input = " ".join(spell_name_buffer)
+                    else: # Assume single word spell name
+                        spell_name_input = args[0]
+                        target_name_parts = args[1:]
+
+                    if not target_name_parts:
+                        temp_user_for_player.send_message("Who do you want to cast that on?")
+                    else:
+                        target_name = " ".join(target_name_parts).lower()
+                        target_mob_instance = None
+                        if player_instance.room and player_instance.room.mob_instances:
+                            for mob_in_room in player_instance.room.mob_instances:
+                                if mob_in_room.name.lower() == target_name and mob_in_room.is_alive():
+                                    target_mob_instance = mob_in_room
+                                    break
+
+                        if not target_mob_instance:
+                            temp_user_for_player.send_message(f"You don't see '{target_name}' here or they are not a valid target.")
+                        else:
+                            if spell_name_input.lower() == "fire bolt":
+                                cast_messages = player_instance.cast_fire_bolt(target_mob_instance, resolve_attack)
+                                for line in cast_messages:
+                                    temp_user_for_player.send_message(line)
+                                # Check if target died from Fire Bolt
+                                if not target_mob_instance.is_alive():
+                                    player_instance.add_xp(target_mob_instance.xp_value) # Grant XP
+                                    if player_instance.room: player_instance.room.record_defined_mob_death(target_mob_instance)
+                                    if player_instance.room and target_mob_instance in player_instance.room.mob_instances:
+                                        player_instance.room.mob_instances.remove(target_mob_instance)
+                                    if player_instance.target == target_mob_instance: # Clear target if it was the one killed
+                                        player_instance.target = None
+                                        player_instance.in_combat = False # Leave combat if target died
+                                    remove_from_active_combat(player_instance) # Ensure player is removed if combat ended
+                                    remove_from_active_combat(target_mob_instance)
+                            else:
+                                temp_user_for_player.send_message(f"You don't know how to cast '{spell_name_input}'.")
                 responded = True
             elif command_word == "reload":
                 if not args:
@@ -407,7 +471,6 @@ def handle_client(conn, addr):
                 if not args:
                     message = player_instance.use_second_wind()
                     temp_user_for_player.send_message(message)
-                    # player_instance.has_taken_action_this_turn is set within use_second_wind
                 else:
                     temp_user_for_player.send_message("Usage: secondwind")
                 responded = True

@@ -58,9 +58,14 @@ def roll_dice(dice_string):
     total_roll = sum(random.randint(1, dice_sides) for _ in range(num_dice))
     return total_roll + modifier
 
-def resolve_attack(attacker, defender):
+def resolve_attack(attacker, defender,
+                   attack_bonus_override=None,
+                   damage_dice_override=None,
+                   damage_type_override=None,
+                   attack_stat_mod_override=None):
     """
     Resolves an attack from attacker to defender.
+    Can use override parameters for spell attacks or special abilities.
     Returns a list of messages describing the outcome.
     """
     messages = []
@@ -68,28 +73,32 @@ def resolve_attack(attacker, defender):
         messages.append("Debug: Attacker or defender is missing.")
         return messages
 
-    # Get attacker's details
-    attack_bonus = 0
-    damage_dice_str = "1d4" # Default unarmed
-    damage_type = "bludgeoning"
-    attack_stat_mod = 0
     crit_range = [20] # Standard critical hit range
 
-    if hasattr(attacker, 'get_attack_details'): # Player
-        attack_details = attacker.get_attack_details()
-        attack_bonus = attack_details["attack_bonus"]
-        damage_dice_str = attack_details["damage_dice"]
-        damage_type = attack_details["damage_type"]
-        attack_stat_mod = attack_details["stat_modifier"] # For damage bonus
-        # TODO: Add crit_range to attack_details if player has features that expand it
-    elif hasattr(attacker, 'attack_bonus') and hasattr(attacker, 'damage_dice'): # Mob
-        attack_bonus = attacker.attack_bonus
-        damage_dice_str = attacker.damage_dice # Mobs use damage_dice directly
-        damage_type = getattr(attacker, 'damage_type', 'physical') # Default if not specified
-        # Mobs typically don't add stat mod to damage unless it's part of their damage_dice string or flat value
-    else:
-        messages.append(f"Debug: {attacker.name} has no means to attack.")
-        return messages
+    # Determine attack parameters
+    if attack_bonus_override is not None: # Spell/ability attack
+        attack_bonus = attack_bonus_override
+        damage_dice_str = damage_dice_override if damage_dice_override is not None else "1d4" # Default if not provided
+        damage_type = damage_type_override if damage_type_override is not None else "unknown"
+        # For spells, attack_stat_mod_override is the mod to add to damage (often 0 for cantrips)
+        attack_stat_mod_for_damage = attack_stat_mod_override if attack_stat_mod_override is not None else 0
+        is_spell_attack = True
+    else: # Standard weapon attack
+        is_spell_attack = False
+        if hasattr(attacker, 'get_attack_details'): # Player weapon attack
+            attack_details = attacker.get_attack_details()
+            attack_bonus = attack_details["attack_bonus"]
+            damage_dice_str = attack_details["damage_dice"]
+            damage_type = attack_details["damage_type"]
+            attack_stat_mod_for_damage = attack_details["stat_modifier"]
+        elif hasattr(attacker, 'attack_bonus') and hasattr(attacker, 'damage_dice'): # Mob attack
+            attack_bonus = attacker.attack_bonus
+            damage_dice_str = attacker.damage_dice
+            damage_type = getattr(attacker, 'damage_type', 'physical')
+            attack_stat_mod_for_damage = 0 # Mobs usually have full damage in dice_string
+        else:
+            messages.append(f"Debug: {attacker.name} has no means to attack.")
+            return messages
 
     # Get defender's AC
     defender_ac = getattr(defender, 'ac', 10) # Default AC if not specified
@@ -109,20 +118,22 @@ def resolve_attack(attacker, defender):
 
     if total_attack_roll >= defender_ac or is_critical_hit: # Hit
         damage = roll_dice(damage_dice_str)
-
-        # Add stat modifier to damage for players if applicable (usually STR or DEX for melee/finesse/ranged)
-        # Mobs typically have this baked into their damage_dice or have a flat damage value.
-        if hasattr(attacker, 'get_attack_details'): # Player
-            damage += attack_stat_mod
+        damage += attack_stat_mod_for_damage # Apply the determined stat mod for damage
 
         if is_critical_hit:
             messages.append(f"{ANSI_YELLOW}Critical Hit!{ANSI_RESET}")
-            # For D&D 5e style crits, roll damage dice twice
-            # This means rolling the dice part of damage_dice_str again and adding it.
-            # The modifier is only added once.
-            crit_damage_bonus = roll_dice(damage_dice_str.split('+')[0].split('-')[0]) # Roll only the XdY part
-            damage += crit_damage_bonus
-            messages.append(f"Extra critical damage: {crit_damage_bonus}!")
+            # For D&D 5e style crits, roll damage dice an additional time.
+            # The attack_stat_mod_for_damage is only added once to the total.
+            # So, we roll the dice part again and add it to the already calculated damage (which includes the first roll + modifier).
+
+            # Extract only the dice part (e.g., "2d6" from "2d6+3")
+            dice_only_str = damage_dice_str
+            if '+' in dice_only_str: dice_only_str = dice_only_str.split('+')[0]
+            if '-' in dice_only_str: dice_only_str = dice_only_str.split('-')[0]
+
+            crit_damage_roll = roll_dice(dice_only_str)
+            damage += crit_damage_roll
+            messages.append(f"Extra critical damage dice roll: {crit_damage_roll}!")
 
         damage = max(0, damage) # Ensure damage is not negative
 

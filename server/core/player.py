@@ -72,7 +72,8 @@ class Player:
         self.room_id = "start"
         self.skill_proficiencies = set()
         self.used_abilities_this_rest = set()
-        self.has_taken_action_this_turn = False # For simple turn action economy
+        self.has_taken_action_this_turn = False
+        self.spellcasting_ability = None # Will be set from class_data
 
         self.in_combat = False
         self.target = None
@@ -83,6 +84,7 @@ class Player:
         if class_data:
             for skill in class_data.get("skill_proficiencies", []):
                 self.skill_proficiencies.add(skill)
+            self.spellcasting_ability = class_data.get("spellcasting_ability") # e.g. "INT" for Wizard
 
         base_race_data, sub_race_data = self._get_race_data_parts()
         if base_race_data:
@@ -341,6 +343,83 @@ class Player:
             # Only one room move possible
             return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} one room ahead."}
 
+    def get_spell_details(self, spell_name):
+        """Retrieves details for a known spell (currently checks cantrips)."""
+        if not self.player_class_name or not CLASSES_DATA:
+            return None
+        class_data = CLASSES_DATA.get(self.player_class_name)
+        if not class_data:
+            return None
+
+        # Check known cantrips (defined in classes.json for the class)
+        known_cantrips = class_data.get("known_cantrips", [])
+        for cantrip_data in known_cantrips:
+            if cantrip_data.get("name", "").lower() == spell_name.lower():
+                return cantrip_data
+
+        # TODO: Extend to check learned/prepared spells from a spellbook or features
+        return None
+
+    def get_spell_attack_bonus(self):
+        """Calculates the player's spell attack bonus."""
+        if not self.spellcasting_ability:
+            # This case should ideally be prevented by class design or earlier checks
+            print(f"Warning: Player {self.name} has no spellcasting_ability defined for their class {self.player_class_name}.")
+            return self.get_stat_modifier("INT") # Fallback to INT modifier, or could be 0 or raise error
+
+        modifier = self.get_stat_modifier(self.spellcasting_ability)
+        return modifier + self.proficiency_bonus
+
+    def cast_fire_bolt(self, target_mob, combat_resolver): # combat_resolver will be combat.resolve_attack
+        """Casts Fire Bolt at a target mob."""
+        # 1. Check if player can cast (class, level, known spell - basic for now)
+        if self.player_class_name != "Wizard": # Simplified check
+            return ["Only Wizards can cast Fire Bolt this way currently."]
+
+        spell_name = "Fire Bolt"
+        spell_data = self.get_spell_details(spell_name)
+        if not spell_data:
+            return [f"You do not know the spell '{spell_name}'."]
+
+        # 2. Check if action is available
+        if self.has_taken_action_this_turn:
+            return ["You have already taken an action this turn."]
+
+        # 3. Check target validity (simplified)
+        if not target_mob or not hasattr(target_mob, 'is_alive') or not target_mob.is_alive():
+            return ["You need a living target for Fire Bolt."]
+
+        # 4. Range check (simplified to same room)
+        spell_range_type = spell_data.get("range", "same_room")
+        if spell_range_type == "same_room":
+            if not self.room or not hasattr(target_mob, 'room') or self.room.id != target_mob.room.id:
+                return [f"{target_mob.name} is not in range for {spell_name}."]
+        # TODO: Implement more detailed range checks if spells have specific distances
+
+        # 5. Get spell parameters
+        spell_attack_bonus = self.get_spell_attack_bonus()
+        damage_dice = spell_data.get("damage", "1d10")
+        damage_type = spell_data.get("damage_type", "fire")
+
+        # Cantrips like Fire Bolt typically don't add spellcasting ability modifier to damage
+        # unless a specific feature allows it (e.g., Warlock's Agonizing Blast).
+        attack_stat_mod_override_for_damage = 0
+
+        self.has_taken_action_this_turn = True # Casting a spell consumes the action
+
+        messages = [f"{ANSI_YELLOW}You chant arcane words and unleash a searing {spell_name} at {target_mob.name}!{ANSI_RESET}"]
+
+        # Call the combat resolver, passing spell-specific parameters
+        attack_outcome_messages = combat_resolver(
+            attacker=self,
+            defender=target_mob,
+            attack_bonus_override=spell_attack_bonus,
+            damage_dice_override=damage_dice,
+            damage_type_override=damage_type,
+            attack_stat_mod_override=attack_stat_mod_override_for_damage
+        )
+        messages.extend(attack_outcome_messages)
+        return messages
 
     def equip_item(self, item_to_equip_ref, target_slot_key=None):
         item_data=None; found_in_inventory_ref=None
