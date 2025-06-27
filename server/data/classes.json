@@ -145,7 +145,19 @@
     "spellcasting_ability": null,
     "asi_levels": [4, 6, 8, 12, 14, 16, 19], // Fighters get more ASIs
     "features_by_level": {
-      "1": [{"name": "Fighting Style", "description": "..."}, {"name": "Second Wind", "description": "..."}],
+      "1": [
+        {"name": "Fighting Style", "description": "You adopt a particular style of fighting as your specialty. Choose one of the available fighting styles. You can't take a Fighting Style option more than once, even if you later get to choose again."},
+        {
+          "name": "Second Wind",
+          "description": "You have a limited well of stamina that you can draw on to protect yourself from harm. On your turn, you can use this ability to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
+          "action_type": "action",
+          "effect_dice": "1d10",
+          "heals": true,
+          "level_scaling_property": "fighter_level_bonus_to_heal",
+          "uses": 1,
+          "refresh_on": "short_or_long_rest"
+        }
+      ],
       "2": [{"name": "Action Surge (one use)", "description": "..."}],
       "3": [{"name": "Martial Archetype", "description": "..."}],
       "5": [{"name": "Extra Attack (1)", "description": "..."}],

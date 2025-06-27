@@ -1,5 +1,6 @@
 import json
 import math # For floor
+from server.core.combat import roll_dice # For Second Wind healing
 
 # Globals populated by load_game_data()
 CLASSES_DATA = {}
@@ -253,6 +254,106 @@ class Player:
         self.level += 1; self.next_level_xp = self.next_level_xp * 2
         self.recalculate_all_stats(full_heal=True)
         print(f"Ding! {self.name} reached level {self.level}!")
+
+    def get_class_feature(self, feature_name):
+        """Helper to get feature data from CLASSES_DATA for the player's class and level."""
+        if not CLASSES_DATA: load_game_data() # Should already be loaded by __init__ or recalculate
+        class_data = CLASSES_DATA.get(self.player_class_name)
+        if not class_data: return None
+
+        # Iterate through all levels up to current player level to find the feature
+        # Assumes features are not overridden by higher levels with the same name unless explicitly handled
+        found_feature = None
+        for level_int in range(1, self.level + 1):
+            level_str = str(level_int)
+            features_at_level = class_data.get("features_by_level", {}).get(level_str, [])
+            for feature in features_at_level:
+                if feature.get("name") == feature_name:
+                    found_feature = feature # Keep the highest level version found if names are reused (unlikely for distinct features)
+        return found_feature
+
+    def can_use_ability(self, ability_name):
+        """Checks if an ability can be used. More specific checks in ability methods."""
+        feature_data = self.get_class_feature(ability_name)
+        if not feature_data:
+            # print(f"DEBUG: Ability {ability_name} not found as a class feature for {self.name}.")
+            return False
+
+        uses = feature_data.get("uses")
+        refresh_on = feature_data.get("refresh_on")
+
+        if uses is not None and refresh_on is not None: # It's a limited use ability
+            # For now, simple check on used_abilities_this_rest set
+            if ability_name in self.used_abilities_this_rest:
+                # print(f"DEBUG: {ability_name} is in used_abilities_this_rest.")
+                return False
+        # Add more conditions here for other types of abilities (spell slots, points, etc.)
+        return True
+
+    def mark_ability_used(self, ability_name):
+        """Marks a limited-use ability as used for this rest period."""
+        feature_data = self.get_class_feature(ability_name)
+        if feature_data and feature_data.get("uses") is not None and feature_data.get("refresh_on") is not None:
+            self.used_abilities_this_rest.add(ability_name)
+            # print(f"DEBUG: Marked {ability_name} as used. Current: {self.used_abilities_this_rest}")
+
+    def reset_ability_uses_on_rest(self, rest_type="long"):
+        """Resets ability uses based on rest type. 'short' or 'long'."""
+        # print(f"DEBUG: {self.name} attempting to reset abilities for {rest_type} rest. Currently used: {self.used_abilities_this_rest}")
+        abilities_to_clear_from_set = set()
+        for ability_name_used in list(self.used_abilities_this_rest): # Iterate over a copy
+            feature_data = self.get_class_feature(ability_name_used)
+            if feature_data:
+                refresh_condition = feature_data.get("refresh_on")
+                if refresh_condition == "short_or_long_rest":
+                    abilities_to_clear_from_set.add(ability_name_used)
+                elif refresh_condition == "long_rest" and rest_type == "long":
+                    abilities_to_clear_from_set.add(ability_name_used)
+            else: # Should not happen if it was marked used correctly
+                 abilities_to_clear_from_set.add(ability_name_used) # Clear if feature definition missing, to be safe
+
+        for ab_name in abilities_to_clear_from_set:
+            if ab_name in self.used_abilities_this_rest:
+                 self.used_abilities_this_rest.remove(ab_name)
+        # print(f"DEBUG: {self.name} abilities after reset. Currently used: {self.used_abilities_this_rest}")
+
+
+    def use_second_wind(self):
+        """Allows a Fighter to use their Second Wind ability."""
+        if self.player_class_name != "Fighter": # Basic check, could also check if player actually has the feature
+            return "Only Fighters can use Second Wind."
+
+        feature_name = "Second Wind"
+        feature_data = self.get_class_feature(feature_name)
+
+        if not feature_data: # Should be caught by class check, but good for robustness
+            return "You do not seem to have the Second Wind ability."
+
+        if not self.can_use_ability(feature_name):
+            return "You have already used Second Wind. You must complete a short or long rest before using it again."
+
+        heal_dice = feature_data.get("effect_dice", "1d10") # Default if somehow missing
+        base_heal = roll_dice(heal_dice)
+
+        level_bonus = 0
+        if feature_data.get("level_scaling_property") == "fighter_level_bonus_to_heal":
+            level_bonus = self.level
+
+        total_heal = base_heal + level_bonus
+
+        # Ensure healing doesn't exceed max HP
+        actual_healed_amount = 0
+        if self.current_hp < self.max_hp:
+            actual_healed_amount = min(total_heal, self.max_hp - self.current_hp)
+            self.current_hp += actual_healed_amount
+        else: # Already at max HP
+            self.mark_ability_used(feature_name) # Still counts as a use
+            return "You use Second Wind, but you are already at maximum HP!"
+
+        self.mark_ability_used(feature_name)
+
+        return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice}, +{level_bonus} level bonus = {total_heal} potential)."
+
 
     def equip_item(self, item_to_equip_ref, target_slot_key=None):
         item_data=None; found_in_inventory_ref=None

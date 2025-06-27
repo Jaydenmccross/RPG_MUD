@@ -15,11 +15,8 @@ GAME_TICK_INTERVAL = 10
 world = {}
 mobs_blueprints = {}
 
-# --- Global Combat Management ---
 ACTIVE_COMBATANTS = []
 combat_lock = threading.Lock()
-
-# --- Global Player Management ---
 CONNECTED_PLAYERS = []
 players_lock = threading.Lock()
 
@@ -38,21 +35,19 @@ def remove_connected_player(player_instance):
         if player_instance in CONNECTED_PLAYERS: CONNECTED_PLAYERS.remove(player_instance)
 
 def get_players_in_room(room_id_to_check):
-    """Returns a list of Player instances currently in the given room_id."""
     players_found = []
-    with players_lock: # Ensure thread-safe access to CONNECTED_PLAYERS
+    with players_lock:
         for player in CONNECTED_PLAYERS:
-            # Ensure player.room is the Room object and has an id attribute
             if player.room and player.room.id == room_id_to_check and player.is_alive():
                 players_found.append(player)
     return players_found
-# --- End Global Management ---
 
 ANSI_RED = "\033[91m"; ANSI_GREEN = "\033[92m"; ANSI_YELLOW = "\033[93m"; ANSI_RESET = "\033[0m"
 COMMAND_ALIASES = {
     "l":"look","char":"sheet","character":"sheet","c":"sheet","score":"sheet","stats":"sheet","st":"sheet",
     "eq":"equip","wear":"equip","wield":"equip","rem":"remove","unequip":"remove",
-    "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get"
+    "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
+    "secondwind": "secondwind"
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -73,7 +68,7 @@ USER_FRIENDLY_SLOT_MAP = {
     "light source":Player.EQUIPMENT_SLOT_LIGHT_SOURCE
 }
 
-def load_world_and_game_data(): # Unchanged
+def load_world_and_game_data():
     global world, mobs_blueprints
     core_load_game_data()
     try: world = Room.load_rooms("server/data/world.json")
@@ -86,13 +81,10 @@ def load_world_and_game_data(): # Unchanged
         except Exception as e: print(f"[ERROR] Failed to spawn content in room '{room_id}': {e}")
     print("[SERVER] Initial room contents spawned.")
 
-def game_tick(): # Will be enhanced in a later step
+def game_tick():
     global world, mobs_blueprints, ACTIVE_COMBATANTS, CONNECTED_PLAYERS, combat_lock, players_lock
-    # print(f"[{time.strftime('%H:%M:%S')}] Game Tick Processing...") # Can be verbose
     try:
-        # --- MOB & ITEM RESPAWN LOGIC (as before) ---
         for room_id, room in world.items():
-            # Mob Respawns
             for mob_def in room.mob_definitions:
                 mob_id_to_spawn=mob_def.get("mob_id");max_qty=mob_def.get("max_quantity",1);respawn_secs=mob_def.get("respawn_seconds",300)
                 if not mob_id_to_spawn or respawn_secs<=0:continue
@@ -100,7 +92,7 @@ def game_tick(): # Will be enhanced in a later step
                 num_to_spawn=max_qty-current_live_count
                 if num_to_spawn<=0:continue
                 spawned_this_tick_for_def=0
-                with combat_lock: # Protect access to defeated_mob_track if it's modified here
+                with combat_lock:
                     for i in range(len(room.defeated_mob_track)-1,-1,-1):
                         tracked_death=room.defeated_mob_track[i]
                         if tracked_death["mob_id"]==mob_id_to_spawn:
@@ -109,53 +101,43 @@ def game_tick(): # Will be enhanced in a later step
                                 if blueprint:
                                     new_mob = MobInstance(blueprint)
                                     room.mob_instances.append(new_mob)
-                                    # print(f"[{time.strftime('%H:%M:%S')}] Respawned '{blueprint.name}' in room '{room.id}'.")
-                                    # TODO: Notify players in room
                                     room.defeated_mob_track.pop(i)
                                     spawned_this_tick_for_def+=1
                                     if spawned_this_tick_for_def>=num_to_spawn:break
-            # Item Respawns
-            with combat_lock: # Protect access to pending_item_respawns
+            with combat_lock:
                 for i in range(len(room.pending_item_respawns)-1,-1,-1):
                     item_respawn_entry=room.pending_item_respawns[i];original_def=item_respawn_entry["original_definition"]
                     respawn_item_id=original_def.get("item_id");respawn_qty=original_def.get("quantity",1);item_respawn_secs=original_def.get("respawn_seconds",600)
                     if not respawn_item_id or item_respawn_secs<=0:room.pending_item_respawns.pop(i);continue
                     if time.time()-item_respawn_entry["time_taken"]>=item_respawn_secs:
-                        item_blueprint_dict=PLAYER_ITEMS_DATA.get(respawn_item_id) # This is a dict
+                        item_blueprint_dict=PLAYER_ITEMS_DATA.get(respawn_item_id)
                         if item_blueprint_dict:
-                            # We need to create an Item object from the dict for ItemInstance constructor
-                            from server.core.content import Item # Local import to avoid circular if Item needs Room
-                            actual_blueprint = Item(**item_blueprint_dict) # Create Item object
+                            from server.core.content import Item
+                            actual_blueprint = Item(**item_blueprint_dict)
                             if actual_blueprint.type=="container":new_item_instance=ContainerInstance(actual_blueprint,respawn_qty)
                             else:new_item_instance=ItemInstance(actual_blueprint,respawn_qty)
                             room.add_item_to_ground(new_item_instance)
-                            # print(f"[{time.strftime('%H:%M:%S')}] Respawned '{actual_blueprint.name}' in room '{room.id}'.")
                             room.pending_item_respawns.pop(i)
                         else:print(f"Warning: Item blueprint ID '{respawn_item_id}' for respawn not found.");room.pending_item_respawns.pop(i)
-
-        # --- COMBAT & AGGRO AI (To be added in next steps) ---
-
     except Exception as e:print(f"[ERROR] Exception in game_tick: {e}");import traceback;traceback.print_exc()
 
-def game_tick_loop(): # Unchanged
+def game_tick_loop():
     while True:game_tick();time.sleep(GAME_TICK_INTERVAL)
 
 def handle_client(conn, addr):
     print(f"[+] Connection from {addr}")
     player_instance = None; username = None; user_data = None
     try:
-        username, user_data = UserManager.authenticate_or_create(conn) # user_data is character_data
-        if not username or not user_data: # Ensure user_data is also present
+        username, user_data = UserManager.authenticate_or_create(conn)
+        if not username or not user_data:
             if conn: conn.close()
             print(f"[-] Auth failed or no character data for {addr}")
             return
 
-        # Extract data for Player constructor
-        # UserManager now ensures these fields exist with defaults if loading older data
-        player_name = user_data.get("name", username) # Fallback to username if name somehow missing
-        player_class_name = user_data.get("player_class_name", "Fighter") # Default from UserManager
-        player_race_name = user_data.get("race_name", "Human") # Default from UserManager, specific key
-        player_base_stats = user_data.get("base_stats") # This will be a dict from UserManager
+        player_name = user_data.get("name", username)
+        player_class_name = user_data.get("player_class_name", "Fighter")
+        player_race_name = user_data.get("race_name", "Human")
+        player_base_stats = user_data.get("base_stats")
 
         class TempUser:
             def __init__(self, c, u): self.connection=c; self.username=u
@@ -171,56 +153,50 @@ def handle_client(conn, addr):
 
         temp_user_for_player = TempUser(conn, username)
 
-        # Instantiate Player with all necessary data, including base_stats
         player_instance = Player(
             user=temp_user_for_player,
             player_class_name=player_class_name,
             race_name=player_race_name,
             name=player_name,
-            base_stats=player_base_stats # Pass the loaded base_stats dictionary
+            base_stats=player_base_stats
         )
-        # Player __init__ will now use these base_stats and then call recalculate_all_stats.
 
         add_connected_player(player_instance)
 
-        # Initialize player's level, xp, current_hp from saved data *after* initial stat calculation
         player_instance.level = user_data.get("level", 1)
         player_instance.xp = user_data.get("xp", 0)
-        # recalculate_all_stats (called in Player init) sets current_hp to max_hp by default.
-        # Override with saved current_hp if it's valid.
         saved_hp = user_data.get("current_hp", player_instance.max_hp)
         player_instance.current_hp = min(saved_hp, player_instance.max_hp) if saved_hp > 0 else player_instance.max_hp
+        player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", [])) # Load used abilities
 
         player_instance.room_id = user_data.get("current_room_id", "start")
         current_room_obj = world.get(player_instance.room_id, world.get("start"))
         if not current_room_obj: player_instance.room_id = "start"; current_room_obj = world.get("start")
         player_instance.room = current_room_obj
 
-        raw_inventory = user_data.get("inventory", []) # Load inventory
-        player_instance.inventory = [] # Start with fresh inventory before loading
-        for item_rep in raw_inventory: # item_rep is {'item_id': 'id', 'quantity': x}
+        raw_inventory = user_data.get("inventory", [])
+        player_instance.inventory = []
+        for item_rep in raw_inventory:
             item_id = item_rep.get("item_id")
             quantity = item_rep.get("quantity", 1)
             if item_id and PLAYER_ITEMS_DATA:
                 blueprint_dict = PLAYER_ITEMS_DATA.get(item_id)
                 if blueprint_dict:
-                    # We need to create ItemInstance from blueprint dict
-                    from server.core.content import Item # Local import
-                    blueprint_obj = Item(**blueprint_dict) # Create Item object
-                    if blueprint_obj.type == "container": # Check type from blueprint object
-                        # TODO: Handle loading container contents if saved
+                    from server.core.content import Item
+                    blueprint_obj = Item(**blueprint_dict)
+                    if blueprint_obj.type == "container":
                         player_instance.inventory.append(ContainerInstance(blueprint_obj, quantity))
                     else:
                         player_instance.inventory.append(ItemInstance(blueprint_obj, quantity))
                 else: print(f"Warning: Inventory item ID '{item_id}' not found for {player_name}")
 
-        saved_equipment = user_data.get("equipment", {}) # Load equipment
+        saved_equipment = user_data.get("equipment", {})
         if saved_equipment:
             for slot, item_id_in_save in saved_equipment.items():
                 if item_id_in_save and slot in Player.ALL_EQUIPMENT_SLOTS and PLAYER_ITEMS_DATA:
                     item_data_from_db = PLAYER_ITEMS_DATA.get(item_id_in_save)
                     if item_data_from_db: player_instance.equipment[slot] = dict(item_data_from_db)
-        player_instance.recalculate_all_stats()
+        # player_instance.recalculate_all_stats() # Already called in Player.__init__
 
         temp_user_for_player.send_message("\r\nWelcome to the MUD!")
         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
@@ -235,8 +211,6 @@ def handle_client(conn, addr):
             command_word = COMMAND_ALIASES.get(command_word, command_word)
             responded = False
 
-            # ... (Existing command handlers: DIRECTIONS, go, look, sheet, equip, remove, inventory, get, drop) ...
-            # These remain as they were in the previous full update of main.py
             if command_word in DIRECTIONS and not args:
                 if player_instance.in_combat: temp_user_for_player.send_message("You can't move while in combat!")
                 else:
@@ -299,7 +273,7 @@ def handle_client(conn, addr):
                 else:
                     item_name_to_get = " ".join(args).lower()
                     item_instance_taken = player_instance.room.remove_item_from_ground(item_name_to_get)
-                    if item_instance_taken: # This is now an ItemInstance object
+                    if item_instance_taken:
                         add_message = player_instance.add_item_to_inventory(item_instance_taken)
                         temp_user_for_player.send_message(add_message)
                     else: temp_user_for_player.send_message(f"You see no '{item_name_to_get}' here.")
@@ -348,34 +322,45 @@ def handle_client(conn, addr):
                             if not player_instance.is_alive():
                                 target_mob_instance.target = None; target_mob_instance.in_combat = False
                                 remove_from_active_combat(target_mob_instance)
-                                # Player removal from ACTIVE_COMBATANTS handled by finally block or game tick
                     else: temp_user_for_player.send_message(f"There is no living '{target_name}' here.")
                 responded = True
             elif command_word == "reload":
                 if not args:
-                    load_world_and_game_data(); player_instance.recalculate_all_stats(full_heal=True)
-                    if player_instance.room_id not in world: player_instance.room_id = "start"
+                    load_world_and_game_data()
+                    player_instance.recalculate_all_stats(full_heal=True)
+                    if player_instance.room_id not in world:
+                        player_instance.room_id = "start"
                     player_instance.room = world.get(player_instance.room_id, world.get("start"))
                     temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
-                    if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
+                    if player_instance.room:
+                        temp_user_for_player.send_message(player_instance.room.display())
+                else:
+                    temp_user_for_player.send_message("Usage: reload")
                 responded = True
+            elif command_word == "secondwind":
+                if not args:
+                    message = player_instance.use_second_wind()
+                    temp_user_for_player.send_message(message)
+                else:
+                    temp_user_for_player.send_message("Usage: secondwind")
+                responded = True
+            # Add other commands here before the final 'else'
             if not responded and command_word: temp_user_for_player.send_message("I don't understand that command.")
+
         if not player_instance.is_alive(): temp_user_for_player.send_message("You have been defeated. Your journey ends here.")
     except ConnectionResetError: print(f"[-] Connection reset by {addr}")
     except Exception as e: print(f"[ERROR] Exception in handle_client for {addr}: {e}"); import traceback; traceback.print_exc()
     finally:
-        if player_instance: # Ensure player_instance was created
-            remove_connected_player(player_instance) # Remove from global list
-            if player_instance.in_combat : remove_from_active_combat(player_instance) # Also remove from combat list
-            if player_instance.target and player_instance.target.target == player_instance : # Clear target's target
+        if player_instance:
+            remove_connected_player(player_instance)
+            if player_instance.in_combat : remove_from_active_combat(player_instance)
+            if player_instance.target and player_instance.target.target == player_instance :
                 player_instance.target.target = None
-                player_instance.target.in_combat = False # If target was only fighting this player
-                # remove_from_active_combat(player_instance.target) # And from combat list if its combat ends
+                player_instance.target.in_combat = False
 
-            if username and user_data: # Save data if user was authenticated
+            if username and user_data:
                 user_data["current_room_id"] = player_instance.room.id if player_instance.room else "start"
                 user_data["equipment"] = {s:(d.get("id",d.get("name")) if isinstance(d,dict) else d) if d else None for s,d in player_instance.equipment.items()}
-                # Save inventory: store item_id and quantity for each ItemInstance
                 user_data["inventory"] = [
                     {"item_id": inv_item.item_blueprint.id, "quantity": inv_item.quantity}
                     for inv_item in player_instance.inventory if hasattr(inv_item, 'item_blueprint')
@@ -383,9 +368,10 @@ def handle_client(conn, addr):
                 user_data["level"]=player_instance.level
                 user_data["xp"]=player_instance.xp
                 user_data["current_hp"]=player_instance.current_hp
-                user_data["base_stats"] = player_instance.base_stats # Ensure base stats are saved
-                user_data["race_name"] = player_instance.race_name # Ensure race name is saved
-                user_data["player_class_name"] = player_instance.player_class_name # Ensure class name is saved
+                user_data["base_stats"] = player_instance.base_stats
+                user_data["race_name"] = player_instance.race_name
+                user_data["player_class_name"] = player_instance.player_class_name
+                user_data["used_abilities_this_rest"] = list(player_instance.used_abilities_this_rest) # Save used abilities
                 UserManager.save_user_data(username, user_data)
                 print(f"[*] Player {player_instance.name} data saved for user {username}.")
         try:
@@ -393,7 +379,7 @@ def handle_client(conn, addr):
         except: pass
         print(f"[-] Connection closed: {addr}")
 
-def main(): # Unchanged
+def main():
     print("[SERVER] Starting MUD server..."); load_world_and_game_data()
     tick_thread = threading.Thread(target=game_tick_loop, daemon=True)
     tick_thread.start()
