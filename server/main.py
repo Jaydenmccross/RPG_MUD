@@ -47,7 +47,8 @@ COMMAND_ALIASES = {
     "l":"look","char":"sheet","character":"sheet","c":"sheet","score":"sheet","stats":"sheet","st":"sheet",
     "eq":"equip","wear":"equip","wield":"equip","rem":"remove","unequip":"remove",
     "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
-    "secondwind": "secondwind"
+    "secondwind": "secondwind",
+    "rest": "rest"
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -336,6 +337,19 @@ def handle_client(conn, addr):
                         temp_user_for_player.send_message(player_instance.room.display())
                 else:
                     temp_user_for_player.send_message("Usage: reload")
+                responded = True
+            elif command_word == "rest":
+                if player_instance.in_combat:
+                    temp_user_for_player.send_message("You cannot rest while in combat!")
+                elif args: # Rest command should not take arguments
+                    temp_user_for_player.send_message("Usage: rest")
+                else:
+                    message = player_instance.perform_long_rest()
+                    temp_user_for_player.send_message(message)
+                    # Optional: Notify others in room
+                    # for other_player in get_players_in_room(player_instance.room.id):
+                    #    if other_player != player_instance:
+                    #        other_player.user.send_message(f"{player_instance.name} rests for a while.")
                 responded = True
             elif command_word == "secondwind":
                 if not args:

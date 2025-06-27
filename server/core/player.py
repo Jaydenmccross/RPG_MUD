@@ -317,6 +317,13 @@ class Player:
                  self.used_abilities_this_rest.remove(ab_name)
         # print(f"DEBUG: {self.name} abilities after reset. Currently used: {self.used_abilities_this_rest}")
 
+    def perform_long_rest(self):
+        """Performs a long rest, restoring HP and resetting abilities."""
+        self.current_hp = self.max_hp
+        # Future: Restore MP, spell slots, etc.
+        self.reset_ability_uses_on_rest(rest_type="long")
+        # print(f"DEBUG: {self.name} performed a long rest. HP: {self.current_hp}/{self.max_hp}. Used abilities: {self.used_abilities_this_rest}")
+        return "You feel fully rested and revitalized."
 
     def use_second_wind(self):
         """Allows a Fighter to use their Second Wind ability."""
