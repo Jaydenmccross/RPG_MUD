@@ -12,7 +12,7 @@ HOST = "127.0.0.1"
 PORT = 4000
 GAME_TICK_INTERVAL = 10
 
-world = {}
+world = {} # This will store Room objects, keyed by room_id
 mobs_blueprints = {}
 
 ACTIVE_COMBATANTS = []
@@ -48,7 +48,8 @@ COMMAND_ALIASES = {
     "eq":"equip","wear":"equip","wield":"equip","rem":"remove","unequip":"remove",
     "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
     "secondwind": "secondwind",
-    "rest": "rest"
+    "rest": "rest",
+    "dash": "dash"
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -168,7 +169,7 @@ def handle_client(conn, addr):
         player_instance.xp = user_data.get("xp", 0)
         saved_hp = user_data.get("current_hp", player_instance.max_hp)
         player_instance.current_hp = min(saved_hp, player_instance.max_hp) if saved_hp > 0 else player_instance.max_hp
-        player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", [])) # Load used abilities
+        player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", []))
 
         player_instance.room_id = user_data.get("current_room_id", "start")
         current_room_obj = world.get(player_instance.room_id, world.get("start"))
@@ -197,12 +198,13 @@ def handle_client(conn, addr):
                 if item_id_in_save and slot in Player.ALL_EQUIPMENT_SLOTS and PLAYER_ITEMS_DATA:
                     item_data_from_db = PLAYER_ITEMS_DATA.get(item_id_in_save)
                     if item_data_from_db: player_instance.equipment[slot] = dict(item_data_from_db)
-        # player_instance.recalculate_all_stats() # Already called in Player.__init__
 
         temp_user_for_player.send_message("\r\nWelcome to the MUD!")
         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
 
         while player_instance.is_alive():
+            player_instance.reset_turn_actions() # Reset action flag at the start of each command input cycle
+
             temp_user_for_player.send_message("\r\n> ")
             msg = temp_user_for_player.read_line()
             if msg is None: break
@@ -213,25 +215,35 @@ def handle_client(conn, addr):
             responded = False
 
             if command_word in DIRECTIONS and not args:
-                if player_instance.in_combat: temp_user_for_player.send_message("You can't move while in combat!")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif player_instance.in_combat:
+                    temp_user_for_player.send_message("You can't move like that while in combat!")
                 else:
                     direction_to_move = DIRECTIONS[command_word]
                     if player_instance.room and direction_to_move in player_instance.room.exits:
                         new_room_id = player_instance.room.exits[direction_to_move]
-                        if new_room_id in world: player_instance.room = world[new_room_id]
+                        if new_room_id in world:
+                            player_instance.room = world[new_room_id]
+                            player_instance.has_taken_action_this_turn = True
                         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
                         else: temp_user_for_player.send_message("The exit leads nowhere.")
                         user_data["current_room_id"] = player_instance.room.id if player_instance.room else "start"
                     else: temp_user_for_player.send_message("You can't go that way.")
                 responded = True
             elif command_word == "go":
-                if player_instance.in_combat: temp_user_for_player.send_message("You can't move while in combat!")
+                if player_instance.has_taken_action_this_turn:
+                     temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif player_instance.in_combat:
+                    temp_user_for_player.send_message("You can't move like that while in combat!")
                 elif not args: temp_user_for_player.send_message("Go where?")
                 else:
                     direction_input = " ".join(args).lower(); direction_to_move = DIRECTIONS.get(direction_input)
                     if player_instance.room and direction_to_move and direction_to_move in player_instance.room.exits:
                         new_room_id = player_instance.room.exits[direction_to_move]
-                        if new_room_id in world: player_instance.room = world[new_room_id]
+                        if new_room_id in world:
+                            player_instance.room = world[new_room_id]
+                            player_instance.has_taken_action_this_turn = True
                         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
                         else: temp_user_for_player.send_message("The exit leads nowhere.")
                         user_data["current_room_id"] = player_instance.room.id if player_instance.room else "start"
@@ -247,14 +259,21 @@ def handle_client(conn, addr):
                 else: temp_user_for_player.send_message("Usage: sheet")
                 responded = True
             elif command_word == "equip":
-                if not args: temp_user_for_player.send_message("Equip what?")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif not args: temp_user_for_player.send_message("Equip what?")
                 else:
                     item_ref = args[0]; target_slot=None
                     if len(args) > 1: target_slot = USER_FRIENDLY_SLOT_MAP.get(" ".join(args[1:]).lower())
-                    temp_user_for_player.send_message(player_instance.equip_item(item_ref, target_slot))
+                    result = player_instance.equip_item(item_ref, target_slot)
+                    temp_user_for_player.send_message(result)
+                    if not result.startswith(("Cannot","You don't have","Invalid","Could not")): # Crude check for success
+                        player_instance.has_taken_action_this_turn = True
                 responded = True
             elif command_word == "remove":
-                if not args: temp_user_for_player.send_message("Remove what?")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif not args: temp_user_for_player.send_message("Remove what?")
                 else:
                     slot_input = " ".join(args).lower(); target_slot_const = USER_FRIENDLY_SLOT_MAP.get(slot_input)
                     if not target_slot_const: target_slot_const = next((s for s in Player.ALL_EQUIPMENT_SLOTS if s.lower() == slot_input), None)
@@ -262,14 +281,18 @@ def handle_client(conn, addr):
                     else:
                         result = player_instance.remove_item(target_slot_const)
                         if isinstance(result, str): temp_user_for_player.send_message(result)
-                        elif isinstance(result, dict): temp_user_for_player.send_message(f"You remove {result.get('name','item')}.")
+                        elif isinstance(result, dict):
+                            temp_user_for_player.send_message(f"You remove {result.get('name','item')}.")
+                            player_instance.has_taken_action_this_turn = True
                 responded = True
             elif command_word == "inventory":
                 if not args: temp_user_for_player.send_message(player_instance.display_inventory())
                 else: temp_user_for_player.send_message("Just type 'inventory' or 'i'.")
                 responded = True
             elif command_word == "get":
-                if not args: temp_user_for_player.send_message("Get what?")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif not args: temp_user_for_player.send_message("Get what?")
                 elif not player_instance.room: temp_user_for_player.send_message("You aren't in a valid room.")
                 else:
                     item_name_to_get = " ".join(args).lower()
@@ -277,10 +300,13 @@ def handle_client(conn, addr):
                     if item_instance_taken:
                         add_message = player_instance.add_item_to_inventory(item_instance_taken)
                         temp_user_for_player.send_message(add_message)
+                        player_instance.has_taken_action_this_turn = True
                     else: temp_user_for_player.send_message(f"You see no '{item_name_to_get}' here.")
                 responded = True
             elif command_word == "drop":
-                if not args: temp_user_for_player.send_message("Drop what?")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif not args: temp_user_for_player.send_message("Drop what?")
                 elif not player_instance.room: temp_user_for_player.send_message("You aren't in a valid room.")
                 else:
                     item_name_to_drop = " ".join(args).lower()
@@ -288,12 +314,15 @@ def handle_client(conn, addr):
                     if isinstance(item_to_drop_instance, ItemInstance) :
                         player_instance.room.add_item_to_ground(item_to_drop_instance)
                         temp_user_for_player.send_message(f"You drop {item_to_drop_instance.item_blueprint.name}.")
+                        player_instance.has_taken_action_this_turn = True
                     elif isinstance(item_to_drop_instance, str):
                         temp_user_for_player.send_message(item_to_drop_instance)
                     else: temp_user_for_player.send_message(f"You don't have '{item_name_to_drop}'.")
                 responded = True
             elif command_word == "kill":
-                if player_instance.in_combat: temp_user_for_player.send_message("You are already fighting!")
+                if player_instance.has_taken_action_this_turn:
+                    temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif player_instance.in_combat: temp_user_for_player.send_message("You are already fighting!")
                 elif not args: temp_user_for_player.send_message("Kill what?")
                 else:
                     target_name = " ".join(args).lower(); target_mob_instance = None
@@ -308,8 +337,8 @@ def handle_client(conn, addr):
                         temp_user_for_player.send_message(f"You attack the {target_mob_instance.name}!")
                         attack_messages = resolve_attack(player_instance, target_mob_instance)
                         for line in attack_messages: temp_user_for_player.send_message(line)
+                        player_instance.has_taken_action_this_turn = True
                         if not target_mob_instance.is_alive():
-                            temp_user_for_player.send_message(f"{ANSI_GREEN}You have defeated the {target_mob_instance.name}!{ANSI_RESET}")
                             player_instance.add_xp(target_mob_instance.xp_value)
                             if player_instance.room: player_instance.room.record_defined_mob_death(target_mob_instance)
                             if player_instance.room and target_mob_instance in player_instance.room.mob_instances:
@@ -325,6 +354,30 @@ def handle_client(conn, addr):
                                 remove_from_active_combat(target_mob_instance)
                     else: temp_user_for_player.send_message(f"There is no living '{target_name}' here.")
                 responded = True
+            elif command_word == "dash":
+                if not args:
+                    temp_user_for_player.send_message("Dash where? (e.g., dash north)")
+                else:
+                    direction_input = " ".join(args).lower()
+                    direction_to_dash = DIRECTIONS.get(direction_input)
+                    if not direction_to_dash:
+                        temp_user_for_player.send_message(f"Unknown direction: '{direction_input}'.")
+                    else:
+                        dash_result = player_instance.use_dash(direction_to_dash, world)
+
+                        if isinstance(dash_result, str):
+                            temp_user_for_player.send_message(dash_result)
+                        elif isinstance(dash_result, dict) and dash_result.get("success"):
+                            if dash_result.get("rooms_moved", 0) > 0 and dash_result.get("final_room_id") in world:
+                                player_instance.room = world[dash_result["final_room_id"]]
+                                user_data["current_room_id"] = player_instance.room.id
+                                temp_user_for_player.send_message(player_instance.room.display())
+                            temp_user_for_player.send_message(dash_result.get("message", "You dash."))
+                        elif isinstance(dash_result, dict) and not dash_result.get("success"):
+                             temp_user_for_player.send_message(dash_result.get("message", "You cannot dash right now."))
+                        else:
+                            temp_user_for_player.send_message("An unexpected error occurred with dashing.")
+                responded = True
             elif command_word == "reload":
                 if not args:
                     load_world_and_game_data()
@@ -339,26 +392,26 @@ def handle_client(conn, addr):
                     temp_user_for_player.send_message("Usage: reload")
                 responded = True
             elif command_word == "rest":
-                if player_instance.in_combat:
+                if player_instance.has_taken_action_this_turn:
+                     temp_user_for_player.send_message("You have already taken an action this turn.")
+                elif player_instance.in_combat:
                     temp_user_for_player.send_message("You cannot rest while in combat!")
-                elif args: # Rest command should not take arguments
+                elif args:
                     temp_user_for_player.send_message("Usage: rest")
                 else:
                     message = player_instance.perform_long_rest()
                     temp_user_for_player.send_message(message)
-                    # Optional: Notify others in room
-                    # for other_player in get_players_in_room(player_instance.room.id):
-                    #    if other_player != player_instance:
-                    #        other_player.user.send_message(f"{player_instance.name} rests for a while.")
+                    player_instance.has_taken_action_this_turn = True
                 responded = True
             elif command_word == "secondwind":
                 if not args:
                     message = player_instance.use_second_wind()
                     temp_user_for_player.send_message(message)
+                    # player_instance.has_taken_action_this_turn is set within use_second_wind
                 else:
                     temp_user_for_player.send_message("Usage: secondwind")
                 responded = True
-            # Add other commands here before the final 'else'
+
             if not responded and command_word: temp_user_for_player.send_message("I don't understand that command.")
 
         if not player_instance.is_alive(): temp_user_for_player.send_message("You have been defeated. Your journey ends here.")
@@ -385,7 +438,7 @@ def handle_client(conn, addr):
                 user_data["base_stats"] = player_instance.base_stats
                 user_data["race_name"] = player_instance.race_name
                 user_data["player_class_name"] = player_instance.player_class_name
-                user_data["used_abilities_this_rest"] = list(player_instance.used_abilities_this_rest) # Save used abilities
+                user_data["used_abilities_this_rest"] = list(player_instance.used_abilities_this_rest)
                 UserManager.save_user_data(username, user_data)
                 print(f"[*] Player {player_instance.name} data saved for user {username}.")
         try:

@@ -1,6 +1,6 @@
 import json
 import math # For floor
-from server.core.combat import roll_dice # For Second Wind healing
+from server.core.combat import roll_dice
 
 # Globals populated by load_game_data()
 CLASSES_DATA = {}
@@ -59,68 +59,60 @@ class Player:
 
     def __init__(self, user, player_class_name="Fighter", race_name="Human", name="Adventurer", base_stats=None):
         self.user = user; self.name = name; self.player_class_name = player_class_name
-        self.race_name = race_name # This is expected to be the specific key, e.g., "High Elf" or "Human"
-        self.level = 1; self.xp = 0; self.next_level_xp = 300 # TODO: Make next_level_xp dynamic
+        self.race_name = race_name
+        self.level = 1; self.xp = 0; self.next_level_xp = 300
 
         if base_stats: self.base_stats = base_stats.copy()
-        else: self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10} # Fallback
+        else: self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
 
         self.current_hp = 0; self.max_hp = 0; self.temporary_hp = 0
-        self.current_mp = 0; self.max_mp = 0; self.spell_slots = {} # TODO: Populate based on class
+        self.current_mp = 0; self.max_mp = 0; self.spell_slots = {}
         self.equipment = {slot: None for slot in Player.ALL_EQUIPMENT_SLOTS}
         self.inventory = []
-        self.room_id = "start" # Default starting room from UserManager constants
+        self.room_id = "start"
         self.skill_proficiencies = set()
+        self.used_abilities_this_rest = set()
+        self.has_taken_action_this_turn = False # For simple turn action economy
 
-        # Ensure data is loaded before trying to access it
+        self.in_combat = False
+        self.target = None
+
         if not (CLASSES_DATA and RACES_DATA): load_game_data()
 
-        # Populate skill proficiencies from class
         class_data = CLASSES_DATA.get(self.player_class_name)
         if class_data:
             for skill in class_data.get("skill_proficiencies", []):
                 self.skill_proficiencies.add(skill)
 
-        # Populate skill proficiencies from race/subrace
         base_race_data, sub_race_data = self._get_race_data_parts()
         if base_race_data:
             for trait in base_race_data.get("traits", []):
-                if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS : # Example: Elf
+                if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS :
                     self.skill_proficiencies.add("Perception")
-                if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS: # Example: Half-Orc
+                if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS:
                     self.skill_proficiencies.add("Intimidation")
-                # TODO: Handle "Skill Versatility" (Half-Elf) - requires player choice post-creation or default assignment. For now, none assigned.
-        if sub_race_data: # Sub-races usually don't grant skills directly, but could.
-             for trait in sub_race_data.get("traits", []): pass # Add if any sub-race traits grant skills
+        if sub_race_data:
+             for trait in sub_race_data.get("traits", []): pass
 
         self.recalculate_all_stats(full_heal=True)
 
     def _get_race_data_parts(self):
         if not RACES_DATA: return None, None
-        # self.race_name is expected to be the specific key, e.g., "High Elf" or "Human"
         for r_name, r_info in RACES_DATA.items():
-            if r_name == self.race_name: # It's a base race
+            if r_name == self.race_name:
                 return r_info, None
-            if "subraces" in r_info and self.race_name in r_info["subraces"]: # It's a subrace
+            if "subraces" in r_info and self.race_name in r_info["subraces"]:
                 return r_info, r_info["subraces"][self.race_name]
-        return None, None # Race/Subrace not found
+        return None, None
 
     def get_stat_score_racial_and_base(self, stat_name):
         stat_name_upper = stat_name.upper()
-        score = self.base_stats.get(stat_name_upper, 8) # Default to 8 if somehow missing
-
+        score = self.base_stats.get(stat_name_upper, 8)
         base_race_data, sub_race_data = self._get_race_data_parts()
-
         if base_race_data:
             score += base_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
         if sub_race_data:
             score += sub_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
-            # Handle Half-elf "other":2 case - this needs player input post-char-creation or a default.
-            # For now, we assume specific stats are in the JSON. UserManager should handle "other" if possible.
-            # If "other" is present, it implies UserManager didn't resolve it.
-            # This part of ASI logic is primarily for races like Human (+1 to all) or specific subrace bonuses.
-            # Half-elf's flexible +1s should ideally be incorporated into base_stats during creation.
-
         return score
 
     def get_stat_score(self, stat_name):
@@ -128,40 +120,32 @@ class Player:
         stat_name_upper = stat_name.upper()
         for item_data in self.equipment.values():
             if item_data: score += item_data.get("effects", {}).get("bonus_stats", {}).get(stat_name_upper, 0)
-        return min(score, 50) # Assuming a cap of 50 for stats after all bonuses.
+        return min(score, 50)
 
     def get_stat_modifier(self, stat_name):
         return math.floor((self.get_stat_score(stat_name) - 10) / 2)
 
     def get_skill_bonus(self, skill_name):
-        if skill_name not in Player.SKILL_TO_ABILITY_MAP:
-            # print(f"Warning: Skill '{skill_name}' not recognized.")
-            return 0 # Or handle as an error
-
+        if skill_name not in Player.SKILL_TO_ABILITY_MAP: return 0
         ability_stat = Player.SKILL_TO_ABILITY_MAP[skill_name]
         modifier = self.get_stat_modifier(ability_stat)
-
-        prof_bonus = 0
-        if skill_name in self.skill_proficiencies:
-            prof_bonus = self.proficiency_bonus
-
+        prof_bonus = self.proficiency_bonus if skill_name in self.skill_proficiencies else 0
         return modifier + prof_bonus
 
     def calculate_proficiency_bonus(self):
+        # Simplified: plateaus earlier than D&D 5e to suit 1-100 range better.
         if self.level < 5: return 2;
         if self.level < 9: return 3;
         if self.level < 13: return 4;
         if self.level < 17: return 5;
-        if self.level < 21: return 6;
-        if self.level < 25: return 7;
-        if self.level < 30: return 8;
-        if self.level < 40: return 9;
-        if self.level < 50: return 10;
-        if self.level < 60: return 11;
-        if self.level < 70: return 12;
-        if self.level < 80: return 13;
-        if self.level < 90: return 14;
-        return 15;
+        if self.level < 25: return 6;
+        if self.level < 35: return 7;
+        if self.level < 45: return 8;
+        if self.level < 55: return 9;
+        if self.level < 65: return 10;
+        if self.level < 75: return 11;
+        if self.level < 85: return 12;
+        return 13;
 
     def calculate_max_hp(self):
         if not CLASSES_DATA: return 10 + self.get_stat_modifier("CON")
@@ -170,38 +154,21 @@ class Player:
         hit_die = class_data.get("hit_die", 6); con_modifier = self.get_stat_modifier("CON"); max_hp_val = 0
         if self.level == 1: max_hp_val = hit_die + con_modifier
         else:
-            # For levels > 1, average roll (or fixed value) + con_modifier per level
-            # Using ceil(hit_die / 2) + 1 as a common way to represent "average rounded up" or slightly better than just half.
-            # Or more simply, hit_die / 2 + 1 for average, then add con_mod.
-            # Let's use (hit_die / 2 + 0.5) which is average, then add con_mod, ensuring at least 1.
-            hp_gain_per_level_after_1 = max(1, math.floor(hit_die / 2) + 1 + con_modifier) # More generous like some systems
-            # Or stricter D&D 5e PHB rule: (hit_die/2 + 1) or roll. For auto-calc:
-            # hp_gain_per_level_after_1 = max(1, math.ceil(hit_die / 2.0) + con_modifier) # if using average rounded up.
-            # Let's stick to a simpler (hit_die / 2 + 1) + con_modifier, min 1.
             avg_roll_plus_one = (hit_die // 2) + 1
             hp_per_level = max(1, avg_roll_plus_one + con_modifier)
             max_hp_val = (hit_die + con_modifier) + (hp_per_level * (self.level - 1))
-
-        # Racial HP bonuses (e.g., Dwarven Toughness)
         base_race_data, sub_race_data = self._get_race_data_parts()
         racial_traits = []
         if base_race_data and base_race_data.get("traits"): racial_traits.extend(base_race_data.get("traits"))
         if sub_race_data and sub_race_data.get("traits"): racial_traits.extend(sub_race_data.get("traits"))
-
         for trait in racial_traits:
-            if trait.get("name") == "Dwarven Toughness":
-                max_hp_val += self.level
-                break
-
-        # Equipment HP bonuses
+            if trait.get("name") == "Dwarven Toughness": max_hp_val += self.level; break
         for item_data in self.equipment.values():
             if item_data: max_hp_val += item_data.get("effects", {}).get("bonus_hp", 0)
-
         return max(1, max_hp_val)
 
     def calculate_ac(self):
-        dex_modifier = self.get_stat_modifier("DEX")
-        calculated_ac = 10 + dex_modifier
+        dex_modifier = self.get_stat_modifier("DEX"); calculated_ac = 10 + dex_modifier
         equipped_armor_data = self.equipment.get(Player.EQUIPMENT_SLOT_CHEST)
         if equipped_armor_data:
             props = equipped_armor_data.get("properties", {}); armor_type = props.get("armor_type")
@@ -209,9 +176,7 @@ class Player:
             if armor_type == "light": calculated_ac = base_ac_value + dex_modifier
             elif armor_type == "medium": calculated_ac = base_ac_value + min(dex_modifier, props.get("dex_cap_bonus", 2))
             elif armor_type == "heavy": calculated_ac = base_ac_value
-        total_bonus_ac_from_effects = 0
-        for item_data in self.equipment.values():
-            if item_data: total_bonus_ac_from_effects += item_data.get("effects", {}).get("bonus_ac", 0)
+        total_bonus_ac_from_effects = sum(item_data.get("effects", {}).get("bonus_ac", 0) for item_data in self.equipment.values() if item_data)
         calculated_ac += total_bonus_ac_from_effects
         return calculated_ac
 
@@ -243,9 +208,6 @@ class Player:
             if self.current_hp <= 0 and self.max_hp > 0: self.current_hp = 1
         self.ac = self.calculate_ac()
 
-    # assign_standard_array is removed as UserManager now handles initial stat assignment
-    # and passes base_stats to __init__.
-
     def add_xp(self, amount):
         self.xp += amount
         if self.xp >= self.next_level_xp: self.level_up()
@@ -253,55 +215,39 @@ class Player:
     def level_up(self):
         self.level += 1; self.next_level_xp = self.next_level_xp * 2
         self.recalculate_all_stats(full_heal=True)
-        print(f"Ding! {self.name} reached level {self.level}!")
+        if hasattr(self.user, 'send_message'):
+             self.user.send_message(f"{ANSI_GREEN}Ding! You reached level {self.level}!{ANSI_RESET}")
 
     def get_class_feature(self, feature_name):
-        """Helper to get feature data from CLASSES_DATA for the player's class and level."""
-        if not CLASSES_DATA: load_game_data() # Should already be loaded by __init__ or recalculate
+        if not CLASSES_DATA: load_game_data()
         class_data = CLASSES_DATA.get(self.player_class_name)
         if not class_data: return None
-
-        # Iterate through all levels up to current player level to find the feature
-        # Assumes features are not overridden by higher levels with the same name unless explicitly handled
         found_feature = None
         for level_int in range(1, self.level + 1):
             level_str = str(level_int)
             features_at_level = class_data.get("features_by_level", {}).get(level_str, [])
             for feature in features_at_level:
                 if feature.get("name") == feature_name:
-                    found_feature = feature # Keep the highest level version found if names are reused (unlikely for distinct features)
+                    found_feature = feature
         return found_feature
 
-    def can_use_ability(self, ability_name):
-        """Checks if an ability can be used. More specific checks in ability methods."""
+    def can_use_ability(self, ability_name): # Renamed from plan to match existing style
         feature_data = self.get_class_feature(ability_name)
-        if not feature_data:
-            # print(f"DEBUG: Ability {ability_name} not found as a class feature for {self.name}.")
-            return False
-
+        if not feature_data: return False
         uses = feature_data.get("uses")
         refresh_on = feature_data.get("refresh_on")
-
-        if uses is not None and refresh_on is not None: # It's a limited use ability
-            # For now, simple check on used_abilities_this_rest set
-            if ability_name in self.used_abilities_this_rest:
-                # print(f"DEBUG: {ability_name} is in used_abilities_this_rest.")
-                return False
-        # Add more conditions here for other types of abilities (spell slots, points, etc.)
+        if uses is not None and refresh_on is not None:
+            if ability_name in self.used_abilities_this_rest: return False
         return True
 
-    def mark_ability_used(self, ability_name):
-        """Marks a limited-use ability as used for this rest period."""
+    def mark_ability_used(self, ability_name): # Renamed from plan to match existing style
         feature_data = self.get_class_feature(ability_name)
         if feature_data and feature_data.get("uses") is not None and feature_data.get("refresh_on") is not None:
             self.used_abilities_this_rest.add(ability_name)
-            # print(f"DEBUG: Marked {ability_name} as used. Current: {self.used_abilities_this_rest}")
 
     def reset_ability_uses_on_rest(self, rest_type="long"):
-        """Resets ability uses based on rest type. 'short' or 'long'."""
-        # print(f"DEBUG: {self.name} attempting to reset abilities for {rest_type} rest. Currently used: {self.used_abilities_this_rest}")
         abilities_to_clear_from_set = set()
-        for ability_name_used in list(self.used_abilities_this_rest): # Iterate over a copy
+        for ability_name_used in list(self.used_abilities_this_rest):
             feature_data = self.get_class_feature(ability_name_used)
             if feature_data:
                 refresh_condition = feature_data.get("refresh_on")
@@ -309,57 +255,91 @@ class Player:
                     abilities_to_clear_from_set.add(ability_name_used)
                 elif refresh_condition == "long_rest" and rest_type == "long":
                     abilities_to_clear_from_set.add(ability_name_used)
-            else: # Should not happen if it was marked used correctly
-                 abilities_to_clear_from_set.add(ability_name_used) # Clear if feature definition missing, to be safe
-
+            else: abilities_to_clear_from_set.add(ability_name_used)
         for ab_name in abilities_to_clear_from_set:
             if ab_name in self.used_abilities_this_rest:
                  self.used_abilities_this_rest.remove(ab_name)
-        # print(f"DEBUG: {self.name} abilities after reset. Currently used: {self.used_abilities_this_rest}")
 
     def perform_long_rest(self):
-        """Performs a long rest, restoring HP and resetting abilities."""
         self.current_hp = self.max_hp
-        # Future: Restore MP, spell slots, etc.
         self.reset_ability_uses_on_rest(rest_type="long")
-        # print(f"DEBUG: {self.name} performed a long rest. HP: {self.current_hp}/{self.max_hp}. Used abilities: {self.used_abilities_this_rest}")
         return "You feel fully rested and revitalized."
 
-    def use_second_wind(self):
-        """Allows a Fighter to use their Second Wind ability."""
-        if self.player_class_name != "Fighter": # Basic check, could also check if player actually has the feature
-            return "Only Fighters can use Second Wind."
+    def reset_turn_actions(self):
+        """Resets flags that track actions taken within a conceptual turn."""
+        self.has_taken_action_this_turn = False
+        # In future, could reset bonus actions, reactions etc.
 
+    def use_second_wind(self):
+        if self.player_class_name != "Fighter": return "Only Fighters can use Second Wind."
         feature_name = "Second Wind"
         feature_data = self.get_class_feature(feature_name)
+        if not feature_data: return "You do not seem to have the Second Wind ability."
 
-        if not feature_data: # Should be caught by class check, but good for robustness
-            return "You do not seem to have the Second Wind ability."
+        if self.has_taken_action_this_turn: # Assuming Second Wind is an action for now
+            return "You have already taken your action this turn."
 
-        if not self.can_use_ability(feature_name):
+        if not self.can_use_ability(feature_name): # Check if it's already used this rest
             return "You have already used Second Wind. You must complete a short or long rest before using it again."
 
-        heal_dice = feature_data.get("effect_dice", "1d10") # Default if somehow missing
-        base_heal = roll_dice(heal_dice)
+        heal_dice = feature_data.get("effect_dice", "1d10"); base_heal = roll_dice(heal_dice)
+        level_bonus = self.level if feature_data.get("level_scaling_property") == "fighter_level_bonus_to_heal" else 0
+        total_heal = base_heal + level_bonus; actual_healed_amount = 0
 
-        level_bonus = 0
-        if feature_data.get("level_scaling_property") == "fighter_level_bonus_to_heal":
-            level_bonus = self.level
-
-        total_heal = base_heal + level_bonus
-
-        # Ensure healing doesn't exceed max HP
-        actual_healed_amount = 0
         if self.current_hp < self.max_hp:
             actual_healed_amount = min(total_heal, self.max_hp - self.current_hp)
             self.current_hp += actual_healed_amount
-        else: # Already at max HP
-            self.mark_ability_used(feature_name) # Still counts as a use
+        else:
+            self.mark_ability_used(feature_name)
+            self.has_taken_action_this_turn = True
             return "You use Second Wind, but you are already at maximum HP!"
 
         self.mark_ability_used(feature_name)
-
+        self.has_taken_action_this_turn = True
         return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice}, +{level_bonus} level bonus = {total_heal} potential)."
+
+    def use_dash(self, direction_name, world_ref): # Pass world reference for exit checking
+        """Allows a Rogue (L2+) to Dash. Returns dict for main.py to handle move."""
+        if not (self.player_class_name == "Rogue" and self.level >= 2):
+            return {"success": False, "message": "Only Rogues of level 2 or higher can Dash."}
+
+        cunning_action_feature = self.get_class_feature("Cunning Action")
+        if not cunning_action_feature or "Dash" not in cunning_action_feature.get("grants_abilities", []):
+            return {"success": False, "message": "You do not have the Cunning Action: Dash ability."}
+
+        if self.has_taken_action_this_turn:
+            return {"success": False, "message": "You have already taken an action this turn."}
+
+        if not self.room:
+            return {"success": False, "message": "You are not in a valid room to dash from."}
+
+        # Dashing is a combat maneuver, so allow in combat for now.
+        # It consumes the turn's action.
+
+        current_room_obj = self.room # This is a Room object
+
+        # Attempt first move
+        room1_id = current_room_obj.exits.get(direction_name)
+        if not room1_id:
+            return {"success": False, "message": f"You cannot dash {direction_name} - there is no exit there."}
+
+        room1_obj = world_ref.get(room1_id)
+        if not room1_obj:
+            self.has_taken_action_this_turn = True
+            # Player moves into the 'void' if exit is bad, main.py will handle actual move.
+            return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} into an unfamiliar passage..."}
+
+        # Attempt second move from room1
+        room2_id = room1_obj.exits.get(direction_name)
+        room2_obj = world_ref.get(room2_id) if room2_id else None
+
+        self.has_taken_action_this_turn = True # Dash consumes the action
+        if room2_obj:
+            # Successful two-room dash
+            return {"success": True, "rooms_moved": 2, "final_room_id": room2_id, "message": f"You swiftly dash {direction_name} two rooms ahead!"}
+        else:
+            # Only one room move possible
+            return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} one room ahead."}
 
 
     def equip_item(self, item_to_equip_ref, target_slot_key=None):
@@ -416,9 +396,6 @@ class Player:
         self.inventory.append(item_to_remove); self.equipment[slot_name]=None
         self.recalculate_all_stats()
         msg=f"You remove {item_to_remove.get('name','item')} from {slot_name}."
-        # For remove command, message is handled by command handler based on return type.
-        # if not _called_from_equip and hasattr(self.user,'send_message'):self.user.send_message(msg)
-        # print(f"INFO: {self.name} unequipped {item_to_remove.get('name', 'item')} from {slot_name}.") # Server log
         return item_to_remove
 
     def display_sheet(self):
@@ -449,34 +426,22 @@ class Player:
             if item and item_name != f"{ANSI_RED}Nothing{ANSI_RESET}": item_name = f"{ANSI_GREEN}{item_name}{ANSI_RESET}"
             sheet.append(f"  {slot:<20}: {item_name}")
 
-        # Add Skills section
         sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
         sheet.append("Skills: (Bonus) [* Proficient]")
         sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
-
-        # Determine column width for skills for better alignment
-        # max_skill_name_len = 0
-        # if Player.ALL_SKILLS: # Ensure ALL_SKILLS is not empty
-        #    max_skill_name_len = max(len(s) for s in Player.ALL_SKILLS) if Player.ALL_SKILLS else 20
-
-        # Display skills in two columns for brevity if possible
         num_skills = len(Player.ALL_SKILLS)
         mid_point = (num_skills + 1) // 2
-
         for i in range(mid_point):
             skill1_name = Player.ALL_SKILLS[i]
             skill1_bonus = self.get_skill_bonus(skill1_name)
             skill1_prof_char = "*" if skill1_name in self.skill_proficiencies else " "
             skill1_bonus_str = f"+{skill1_bonus}" if skill1_bonus >= 0 else str(skill1_bonus)
-            # Left column: Skill (Ability) [*] Bonus
             skill1_display = f"  {skill1_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill1_name, '???'):<3}) [{skill1_prof_char}] {skill1_bonus_str:>3}"
-
             if i + mid_point < num_skills:
                 skill2_name = Player.ALL_SKILLS[i + mid_point]
                 skill2_bonus = self.get_skill_bonus(skill2_name)
                 skill2_prof_char = "*" if skill2_name in self.skill_proficiencies else " "
                 skill2_bonus_str = f"+{skill2_bonus}" if skill2_bonus >= 0 else str(skill2_bonus)
-                # Right column: Skill (Ability) [*] Bonus
                 skill2_display = f"  {skill2_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill2_name, '???'):<3}) [{skill2_prof_char}] {skill2_bonus_str:>3}"
                 sheet.append(f"{skill1_display.ljust(40)} {skill2_display}")
             else:
@@ -486,26 +451,126 @@ class Player:
         return "\n".join(sheet)
 
     def display_inventory(self):
-        """Formats and returns the player's inventory listing."""
-        if not self.inventory:
-            return "Your inventory is empty."
-
+        if not self.inventory: return "Your inventory is empty."
         inventory_list = [f"{ANSI_GREEN}--- Your Inventory ---{ANSI_RESET}"]
-        # Current inventory stores item data dicts or item_ids (if loaded from save)
-        # A more robust system would use ItemInstance objects with quantity
-        # For now, list names, assuming quantity 1 for each entry if not specified
         for item_ref in self.inventory:
             item_name = "Unknown Item"
-            if isinstance(item_ref, dict): # Item data dict
+            if isinstance(item_ref, dict):
                 item_name = item_ref.get("name", "Unnamed Item")
-            elif isinstance(item_ref, str): # Item ID
-                # Try to look up in ITEMS_DATA if inventory stores IDs
+            elif isinstance(item_ref, str):
                 master_item_data = ITEMS_DATA.get(item_ref)
-                if master_item_data:
-                    item_name = master_item_data.get("name", item_ref)
-                else:
-                    item_name = item_ref # Show ID if not found
+                if master_item_data: item_name = master_item_data.get("name", item_ref)
+                else: item_name = item_ref
             inventory_list.append(f"- {item_name}")
-
         inventory_list.append(f"{ANSI_GREEN}--------------------{ANSI_RESET}")
         return "\n".join(inventory_list)
+
+    def is_alive(self):
+        return self.current_hp > 0
+
+    def take_damage(self, amount, attacker=None):
+        self.current_hp -= amount
+        # Add combat log message here if desired, e.g., self.user.send_message(f"You take {amount} damage!")
+        if self.current_hp <= 0:
+            self.current_hp = 0
+            self.handle_death(attacker)
+
+    def handle_death(self, killer=None):
+        self.in_combat = False
+        self.target = None
+        # Server-side log
+        print(f"[INFO] Player {self.name} has died (killed by {killer.name if killer else 'unknown causes'}).")
+        # Player message is handled by main loop after resolve_attack or other death sources
+
+    def add_item_to_inventory(self, item_instance_or_dict):
+        # For now, assuming ItemInstance objects are added.
+        # If dicts are added (e.g. from old code or simple item gen), they'll just be dicts.
+        self.inventory.append(item_instance_or_dict)
+        name_to_show = "item"
+        if hasattr(item_instance_or_dict, 'item_blueprint'): # ItemInstance
+            name_to_show = item_instance_or_dict.item_blueprint.name
+        elif isinstance(item_instance_or_dict, dict): # dict
+            name_to_show = item_instance_or_dict.get("name", "item")
+        return f"You pick up {name_to_show}."
+
+    def remove_item_from_inventory(self, item_name_or_id, quantity=1):
+        # This basic version removes the first match by name/id, and only one.
+        item_to_remove_idx = -1
+        item_instance_found = None
+        for i, inst in enumerate(self.inventory):
+            name_matches = False
+            id_matches = False
+            current_item_name = ""
+            current_item_id = ""
+
+            if hasattr(inst, 'item_blueprint'): # ItemInstance
+                current_item_name = inst.item_blueprint.name.lower()
+                current_item_id = inst.item_blueprint.id.lower()
+            elif isinstance(inst, dict): # dict based item
+                current_item_name = inst.get("name", "").lower()
+                current_item_id = inst.get("id", "").lower()
+
+            if current_item_name == item_name_or_id.lower() or current_item_id == item_name_or_id.lower():
+                item_to_remove_idx = i
+                item_instance_found = inst # This could be an ItemInstance or a dict
+                break
+
+        if item_instance_found:
+            # TODO: Handle quantity if items are stackable
+            self.inventory.pop(item_to_remove_idx)
+            return item_instance_found # Return the actual item/dict removed
+        return f"You don't have '{item_name_or_id}'."
+
+    def get_attack_details(self):
+        attack_stat = "STR"; damage_dice = "1d4"; damage_type = "bludgeoning"
+        weapon = self.equipment.get(Player.EQUIPMENT_SLOT_WEAPON_MAIN)
+        is_proficient = True # Default to proficient
+
+        if weapon: # Player has a weapon equipped
+            props = weapon.get("properties", {})
+            damage_dice = props.get("damage_dice", damage_dice)
+            damage_type = props.get("damage_type", damage_type)
+
+            # Determine attack stat (STR or DEX for finesse)
+            if props.get("finesse"):
+                if self.get_stat_score("DEX") > self.get_stat_score("STR"):
+                    attack_stat = "DEX"
+            # TODO: Add logic for ranged weapons using DEX by default if weapon has "ranged" property
+
+            # Check proficiency
+            # class_data = CLASSES_DATA.get(self.player_class_name, {})
+            # weapon_proficiencies = class_data.get("weapon_proficiencies", [])
+            # weapon_category = weapon.get("category", "simple") # e.g. "simple", "martial"
+            # specific_weapon_name = weapon.get("name", "").lower()
+            # if not (weapon_category in weapon_proficiencies or
+            #         specific_weapon_name in weapon_proficiencies or
+            #         (weapon.get("id") and weapon["id"] in weapon_proficiencies) ): # Check by ID too
+            #     is_proficient = False
+        else: # Unarmed strike
+            # Check for Monk's Martial Arts for better unarmed damage if applicable
+            if self.player_class_name == "Monk" and self.level > 0: # Monk feature
+                # Monk's Martial Arts die scales with level, simplified here
+                if self.level < 5: damage_dice = "1d4"
+                elif self.level < 11: damage_dice = "1d6"
+                elif self.level < 17: damage_dice = "1d8"
+                else: damage_dice = "1d10"
+                # Monks can use DEX for unarmed strikes
+                if self.get_stat_score("DEX") > self.get_stat_score("STR"):
+                    attack_stat = "DEX"
+            is_proficient = True # Always proficient with unarmed strikes
+
+        attack_bonus_mod = self.get_stat_modifier(attack_stat)
+        attack_bonus = attack_bonus_mod
+        if is_proficient:
+            attack_bonus += self.proficiency_bonus
+
+        return {
+            "attack_bonus": attack_bonus,
+            "damage_dice": damage_dice,
+            "damage_type": damage_type,
+            "stat_modifier": attack_bonus_mod # Modifier from STR/DEX for damage
+        }
+
+# Ensure DIRECTIONS is defined if it's used by Player methods (it's not currently, but good practice for context)
+# DIRECTIONS = {"n":"north", ...} # Copied from main.py if needed by Player logic directly
+# For now, Player.use_dash will take a direction_name string.

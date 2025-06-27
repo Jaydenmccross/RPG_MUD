@@ -253,8 +253,14 @@
     "spellcasting_ability": null, // Arcane Trickster is subclass
     "asi_levels": [4, 8, 10, 12, 16, 19], // Rogues get an extra ASI at 10
     "features_by_level": {
-      "1": [{"name": "Expertise (1)", "description": "..."}, {"name": "Sneak Attack", "description": "..."}, {"name": "Thieves' Cant", "description": "..."}],
-      "2": [{"name": "Cunning Action", "description": "..."}],
+      "1": [{"name": "Expertise (1)", "description": "Choose two of your skill proficiencies, or one of your skill proficiencies and your proficiency with thieves' tools. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies."}, {"name": "Sneak Attack", "description": "Beginning at 1st level, you know how to strike subtly and exploit a foe's distraction. Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack if you have advantage on the attack roll. The attack must use a finesse or a ranged weapon. You don't need advantage on the attack roll if another enemy of the target is within 5 feet of it, that enemy isn't incapacitated, and you don't have disadvantage on the attack roll. The amount of the extra damage increases as you gain levels in this class, as shown in the Sneak Attack column of the Rogue table."}, {"name": "Thieves' Cant", "description": "During your rogue training you learned thieves' cant, a secret mix of dialect, jargon, and code that allows you to hide messages in seemingly normal conversation."}],
+      "2": [
+        {
+          "name": "Cunning Action",
+          "description": "Your quick thinking and agility allow you to move and act swiftly. Starting at 2nd level, you can take a bonus action on each of your turns in combat. This action can be used only to take the Dash, Disengage, or Hide action.",
+          "grants_abilities": ["Dash", "Disengage", "Hide"]
+        }
+      ],
       "3": [{"name": "Roguish Archetype", "description": "..."}],
       "20": [{"name": "Stroke of Luck", "description": "..."}]
       // Populate 1-100
