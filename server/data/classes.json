@@ -21,14 +21,12 @@
       "2": [{"name": "Infuse Item", "description": "..."}],
       "3": [{"name": "Artificer Specialist", "description": "..."}],
       "20": [{"name": "Soul of Artifice", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Alchemist": {"description": "...", "features_by_level": {"3": [], "5":[], "9":[], "15":[]}},
       "Armorer": {"description": "...", "features_by_level": {"3": [], "5":[], "9":[], "15":[]}},
       "Artillerist": {"description": "...", "features_by_level": {"3": [], "5":[], "9":[], "15":[]}},
       "Battle Smith": {"description": "...", "features_by_level": {"3": [], "5":[], "9":[], "15":[]}}
-      // Extend features
     }
   },
   "Barbarian": {
@@ -38,18 +36,16 @@
     "armor_proficiencies": ["light", "medium", "shields"],
     "weapon_proficiencies": ["simple", "martial"],
     "spellcasting_ability": null,
-    "asi_levels": [4, 8, 12, 16, 19], // Extend to 100
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Rage", "description": "..."}, {"name": "Unarmored Defense (Barbarian)", "description": "..."}],
       "2": [{"name": "Reckless Attack", "description": "..."}, {"name": "Danger Sense", "description": "..."}],
       "3": [{"name": "Primal Path", "description": "..."}],
       "20": [{"name": "Primal Champion", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Path of the Berserker": {"description": "...", "features_by_level": {"3":[], "6":[], "10":[], "14":[]}},
       "Path of the Totem Warrior": {"description": "...", "features_by_level": {"3":[], "6":[], "10":[], "14":[]}}
-      // Add more paths and extend features
     }
   },
   "Bard": {
@@ -60,7 +56,7 @@
     "weapon_proficiencies": ["simple", "hand crossbows", "longswords", "rapiers", "shortswords"],
     "tool_proficiencies": ["three musical instruments of your choice"],
     "spellcasting_ability": "CHA",
-    "spell_slots_by_level": { // Full caster progression
+    "spell_slots_by_level": {
       "1": [2,0,0,0,0,0,0,0,0], "2": [3,0,0,0,0,0,0,0,0], "3": [4,2,0,0,0,0,0,0,0],
       "4": [4,3,0,0,0,0,0,0,0], "5": [4,3,2,0,0,0,0,0,0], "6": [4,3,3,0,0,0,0,0,0],
       "7": [4,3,3,1,0,0,0,0,0], "8": [4,3,3,2,0,0,0,0,0], "9": [4,3,3,3,1,0,0,0,0],
@@ -68,22 +64,19 @@
       "13": [4,3,3,3,2,1,1,0,0], "14": [4,3,3,3,2,1,1,0,0], "15": [4,3,3,3,2,1,1,1,0],
       "16": [4,3,3,3,2,1,1,1,0], "17": [4,3,3,3,2,1,1,1,1], "18": [4,3,3,3,3,1,1,1,1],
       "19": [4,3,3,3,3,2,1,1,1], "20": [4,3,3,3,3,2,2,1,1]
-      // Extend for levels 21-100
     },
     "cantrips_known_by_level": {"1":2, "4":3, "10":4},
-    "spells_known_by_level": {"1":4, "2":5, "3":6, "4":7, "5":8, "6":9, "7":10, "8":11, "9":12, "10":14, "11":15, "12":15, "13":16, "14":18, "15":19, "16":19, "17":20, "18":22, "19":22, "20":22}, // Extend
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spells_known_by_level": {"1":4, "2":5, "3":6, "4":7, "5":8, "6":9, "7":10, "8":11, "9":12, "10":14, "11":15, "12":15, "13":16, "14":18, "15":19, "16":19, "17":20, "18":22, "19":22, "20":22},
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Bardic Inspiration (d6)", "description": "..."}],
       "2": [{"name": "Jack of All Trades", "description": "..."}, {"name": "Song of Rest (d6)", "description": "..."}],
       "3": [{"name": "Bard College", "description": "..."}, {"name": "Expertise (1)", "description": "..."}],
       "20": [{"name": "Superior Inspiration", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "College of Lore": {"description": "...", "features_by_level": {"3":[], "6":[], "14":[]}},
       "College of Valor": {"description": "...", "features_by_level": {"3":[], "6":[], "14":[]}}
-      // Add more colleges and extend features
     }
   },
   "Cleric": {
@@ -93,19 +86,17 @@
     "armor_proficiencies": ["light", "medium", "shields"],
     "weapon_proficiencies": ["simple"],
     "spellcasting_ability": "WIS",
-    "spell_slots_by_level": "FULL_CASTER_SLOTS", // Use a reference or copy paste from Bard/Wizard
-    "cantrips_known_by_level": {"1":3, "4":4, "10":5}, // Clerics know all their cantrips, this is # prepared/available
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spell_slots_by_level": "FULL_CASTER_SLOTS",
+    "cantrips_known_by_level": {"1":3, "4":4, "10":5},
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Divine Domain", "description": "..."}],
       "2": [{"name": "Channel Divinity (1/rest)", "description": "..."}],
       "20": [{"name": "Divine Intervention Improvement", "description": "..."}]
-      // Populate 1-100
     },
-    "subclasses": { // Divine Domains
+    "subclasses": {
       "Life Domain": {"description": "...", "features_by_level": {"1":[], "2":[], "6":[], "8":[], "17":[]}},
       "Light Domain": {"description": "...", "features_by_level": {"1":[], "2":[], "6":[], "8":[], "17":[]}}
-      // Add more domains
     }
   },
   "Druid": {
@@ -118,17 +109,15 @@
     "spellcasting_ability": "WIS",
     "spell_slots_by_level": "FULL_CASTER_SLOTS",
     "cantrips_known_by_level": {"1":2, "4":3, "10":4},
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Druidic", "description": "..."}, {"name": "Spellcasting", "description": "..."}],
       "2": [{"name": "Wild Shape", "description": "..."}, {"name": "Druid Circle", "description": "..."}],
       "20": [{"name": "Archdruid", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Circle of the Land": {"description": "...", "features_by_level": {"2":[], "3":[], "6":[], "10":[], "14":[]}},
       "Circle of the Moon": {"description": "...", "features_by_level": {"2":[], "6":[], "10":[], "14":[]}}
-      // Add more circles
     }
   },
   "Fighter": {
@@ -142,7 +131,7 @@
     "weapon_proficiencies": ["simple", "martial"],
     "skill_proficiencies": ["Athletics", "Perception"],
     "spellcasting_ability": null,
-    "asi_levels": [4, 6, 8, 12, 14, 16, 19], // Fighters get more ASIs
+    "asi_levels": [4, 6, 8, 12, 14, 16, 19],
     "features_by_level": {
       "1": [
         {"name": "Fighting Style", "description": "You adopt a particular style of fighting as your specialty. Choose one of the available fighting styles. You can't take a Fighting Style option more than once, even if you later get to choose again."},
@@ -160,14 +149,12 @@
       "2": [{"name": "Action Surge (one use)", "description": "..."}],
       "3": [{"name": "Martial Archetype", "description": "..."}],
       "5": [{"name": "Extra Attack (1)", "description": "..."}],
-      "20": [{"name": "Extra Attack (3) / Action Surge (two uses)", "description": "..."}] // Example, 5e fighter gets 3 extra attacks at L20.
-      // Populate 1-100
+      "20": [{"name": "Extra Attack (3) / Action Surge (two uses)", "description": "..."}]
     },
     "subclasses": {
       "Battle Master": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}},
       "Champion": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}},
       "Eldritch Knight": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}}
-      // Add more archetypes
     }
   },
   "Monk": {
@@ -177,19 +164,17 @@
     "armor_proficiencies": [],
     "weapon_proficiencies": ["simple", "shortswords"],
     "tool_proficiencies": ["one type of artisan's tools or one musical instrument"],
-    "spellcasting_ability": null, // Ki is not traditional spellcasting
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spellcasting_ability": null,
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Unarmored Defense (Monk)", "description": "..."}, {"name": "Martial Arts", "description": "..."}],
       "2": [{"name": "Ki", "description": "..."}, {"name": "Unarmored Movement", "description": "..."}],
       "3": [{"name": "Monastic Tradition", "description": "..."}, {"name": "Deflect Missiles", "description": "..."}],
       "20": [{"name": "Perfect Self", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Way of the Open Hand": {"description": "...", "features_by_level": {"3":[], "6":[], "11":[], "17":[]}},
       "Way of Shadow": {"description": "...", "features_by_level": {"3":[], "6":[], "11":[], "17":[]}}
-      // Add more traditions
     }
   },
   "Paladin": {
@@ -199,19 +184,17 @@
     "armor_proficiencies": ["light", "medium", "heavy", "shields"],
     "weapon_proficiencies": ["simple", "martial"],
     "spellcasting_ability": "CHA",
-    "spell_slots_by_level": "HALF_CASTER_SLOTS", // Similar to Artificer/Ranger
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spell_slots_by_level": "HALF_CASTER_SLOTS",
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Divine Sense", "description": "..."}, {"name": "Lay on Hands", "description": "..."}],
       "2": [{"name": "Fighting Style", "description": "..."}, {"name": "Spellcasting", "description": "..."}, {"name": "Divine Smite", "description": "..."}],
       "3": [{"name": "Divine Health", "description": "..."}, {"name": "Sacred Oath", "description": "..."}],
-      "20": [{"name": "Oath Feature improvement", "description": "..."}] // Example
-      // Populate 1-100
+      "20": [{"name": "Oath Feature improvement", "description": "..."}]
     },
-    "subclasses": { // Sacred Oaths
+    "subclasses": {
       "Oath of Devotion": {"description": "...", "features_by_level": {"3":[], "7":[], "15":[], "20":[]}},
       "Oath of the Ancients": {"description": "...", "features_by_level": {"3":[], "7":[], "15":[], "20":[]}}
-      // Add more oaths
     }
   },
   "Ranger": {
@@ -220,22 +203,20 @@
     "saving_throw_proficiencies": ["STR", "DEX"],
     "armor_proficiencies": ["light", "medium", "shields"],
     "weapon_proficiencies": ["simple", "martial"],
-    "tool_proficiencies": [], // Varies by background usually
+    "tool_proficiencies": [],
     "spellcasting_ability": "WIS",
-    "spell_slots_by_level": "HALF_CASTER_SLOTS", // Placeholder for actual half-caster table
-    "spells_known_by_level": {}, // Rangers have a spells known progression
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spell_slots_by_level": "HALF_CASTER_SLOTS",
+    "spells_known_by_level": {},
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Favored Enemy", "description": "..."}, {"name": "Natural Explorer", "description": "..."}],
       "2": [{"name": "Fighting Style", "description": "..."}, {"name": "Spellcasting", "description": "..."}],
       "3": [{"name": "Ranger Archetype", "description": "..."}, {"name": "Primeval Awareness", "description": "..."}],
       "20": [{"name": "Feral Senses", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Hunter": {"description": "...", "features_by_level": {"3":[], "7":[], "11":[], "15":[]}},
       "Beast Master": {"description": "...", "features_by_level": {"3":[], "7":[], "11":[], "15":[]}}
-      // Add more archetypes
     }
   },
   "Rogue": {
@@ -249,8 +230,8 @@
     "weapon_proficiencies": ["simple", "hand crossbows", "longswords", "rapiers", "shortswords"],
     "skill_proficiencies": ["Stealth", "Sleight of Hand", "Acrobatics", "Perception"],
     "tool_proficiencies": ["Thieves' tools"],
-    "spellcasting_ability": null, // Arcane Trickster is subclass
-    "asi_levels": [4, 8, 10, 12, 16, 19], // Rogues get an extra ASI at 10
+    "spellcasting_ability": null,
+    "asi_levels": [4, 8, 10, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Expertise (1)", "description": "Choose two of your skill proficiencies, or one of your skill proficiencies and your proficiency with thieves' tools. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies."}, {"name": "Sneak Attack", "description": "Beginning at 1st level, you know how to strike subtly and exploit a foe's distraction. Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack if you have advantage on the attack roll. The attack must use a finesse or a ranged weapon. You don't need advantage on the attack roll if another enemy of the target is within 5 feet of it, that enemy isn't incapacitated, and you don't have disadvantage on the attack roll. The amount of the extra damage increases as you gain levels in this class, as shown in the Sneak Attack column of the Rogue table."}, {"name": "Thieves' Cant", "description": "During your rogue training you learned thieves' cant, a secret mix of dialect, jargon, and code that allows you to hide messages in seemingly normal conversation."}],
       "2": [
@@ -262,13 +243,11 @@
       ],
       "3": [{"name": "Roguish Archetype", "description": "..."}],
       "20": [{"name": "Stroke of Luck", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Thief": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}},
       "Assassin": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}},
       "Arcane Trickster": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}}
-      // Add more archetypes
     }
   },
   "Sorcerer": {
@@ -280,19 +259,17 @@
     "spellcasting_ability": "CHA",
     "spell_slots_by_level": "FULL_CASTER_SLOTS",
     "cantrips_known_by_level": {"1":4, "4":5, "10":6},
-    "spells_known_by_level": {"1":2, "2":3, "3":4, "4":5, "5":6, "6":7, "7":8, "8":9, "9":10, "10":11, "11":12, "12":12, "13":13, "14":13, "15":14, "16":14, "17":15, "18":15, "19":15, "20":15}, // Extend
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spells_known_by_level": {"1":2, "2":3, "3":4, "4":5, "5":6, "6":7, "7":8, "8":9, "9":10, "10":11, "11":12, "12":12, "13":13, "14":13, "15":14, "16":14, "17":15, "18":15, "19":15, "20":15},
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Sorcerous Origin", "description": "..."}],
       "2": [{"name": "Font of Magic (Sorcery Points)", "description": "..."}],
       "3": [{"name": "Metamagic", "description": "..."}],
       "20": [{"name": "Sorcerous Restoration", "description": "..."}]
-      // Populate 1-100
     },
     "subclasses": {
       "Draconic Bloodline": {"description": "...", "features_by_level": {"1":[], "6":[], "14":[], "18":[]}},
       "Wild Magic": {"description": "...", "features_by_level": {"1":[], "6":[], "14":[], "18":[]}}
-      // Add more origins
     }
   },
   "Warlock": {
@@ -302,28 +279,25 @@
     "armor_proficiencies": ["light"],
     "weapon_proficiencies": ["simple"],
     "spellcasting_ability": "CHA",
-    "pact_magic_slots_by_level": { // Warlocks have Pact Magic, not standard spell slots
+    "pact_magic_slots_by_level": {
       "1": {"slots":1, "slot_level":1}, "2": {"slots":2, "slot_level":1},
       "3": {"slots":2, "slot_level":2}, "4": {"slots":2, "slot_level":2},
       "5": {"slots":2, "slot_level":3}, "11": {"slots":3, "slot_level":5},
       "17": {"slots":4, "slot_level":5}
-      // This needs careful extension for 100 levels
     },
     "cantrips_known_by_level": {"1":2, "4":3, "10":4},
-    "spells_known_by_level": {}, // Warlocks have a different spells known progression
-    "invocations_known_by_level": {}, // Eldritch Invocations
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "spells_known_by_level": {},
+    "invocations_known_by_level": {},
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Otherworldly Patron", "description": "..."}, {"name": "Pact Magic", "description": "..."}],
       "2": [{"name": "Eldritch Invocations", "description": "..."}],
       "11": [{"name": "Mystic Arcanum (6th level)", "description": "..."}],
       "20": [{"name": "Eldritch Master", "description": "..."}]
-      // Populate 1-100
     },
-    "subclasses": { // Patrons
+    "subclasses": {
       "The Archfey": {"description": "...", "features_by_level": {"1":[], "6":[], "10":[], "14":[]}},
       "The Fiend": {"description": "...", "features_by_level": {"1":[], "6":[], "10":[], "14":[]}}
-      // Add more patrons
     }
   },
   "Wizard": {
@@ -337,7 +311,7 @@
     "weapon_proficiencies": ["daggers", "darts", "slings", "quarterstaffs", "light crossbows"],
     "skill_proficiencies": ["Arcana", "Investigation"],
     "spellcasting_ability": "INT",
-    "spell_slots_by_level": "FULL_CASTER_SLOTS", // Reference or copy
+    "spell_slots_by_level": "FULL_CASTER_SLOTS",
     "cantrips_known_by_level": {"1":3, "4":4, "10":5},
     "known_cantrips": [
         {
@@ -357,20 +331,17 @@
           "range": "same_room",
           "effects_on_hit": [{"type": "reduce_speed", "amount": 10, "duration_rounds": 1}]
         }
-        // Add other default cantrips like Light, Mage Hand if desired
     ],
-    "asi_levels": [4, 8, 12, 16, 19], // Extend
+    "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
       "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Arcane Recovery", "description": "..."}],
       "2": [{"name": "Arcane Tradition", "description": "..."}],
       "18": [{"name": "Spell Mastery", "description": "..."}],
       "20": [{"name": "Signature Spells", "description": "..."}]
-      // Populate 1-100
     },
-    "subclasses": { // Arcane Traditions (Schools)
+    "subclasses": {
       "School of Evocation": {"description": "...", "features_by_level": {"2":[], "6":[], "10":[], "14":[]}},
       "School of Abjuration": {"description": "...", "features_by_level": {"2":[], "6":[], "10":[], "14":[]}}
-      // Add more schools
     }
   }
 }
