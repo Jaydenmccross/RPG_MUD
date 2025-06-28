@@ -73,7 +73,7 @@ class Player:
         self.skill_proficiencies = set()
         self.used_abilities_this_rest = set()
         self.has_taken_action_this_turn = False
-        self.spellcasting_ability = None # Will be set from class_data
+        self.spellcasting_ability = None
 
         self.in_combat = False
         self.target = None
@@ -84,7 +84,7 @@ class Player:
         if class_data:
             for skill in class_data.get("skill_proficiencies", []):
                 self.skill_proficiencies.add(skill)
-            self.spellcasting_ability = class_data.get("spellcasting_ability") # e.g. "INT" for Wizard
+            self.spellcasting_ability = class_data.get("spellcasting_ability")
 
         base_race_data, sub_race_data = self._get_race_data_parts()
         if base_race_data:
@@ -135,7 +135,6 @@ class Player:
         return modifier + prof_bonus
 
     def calculate_proficiency_bonus(self):
-        # Simplified: plateaus earlier than D&D 5e to suit 1-100 range better.
         if self.level < 5: return 2;
         if self.level < 9: return 3;
         if self.level < 13: return 4;
@@ -194,10 +193,10 @@ class Player:
         return self.get_stat_modifier(ability_stat_name) + prof_bonus
 
     def get_spell_save_dc(self):
-        if not CLASSES_DATA: return 8
+        if not self.spellcasting_ability: return 8
         class_data = CLASSES_DATA.get(self.player_class_name)
-        if not class_data or not class_data.get("spellcasting_ability"): return 0
-        spell_mod = self.get_stat_modifier(class_data["spellcasting_ability"])
+        if not class_data : return 8
+        spell_mod = self.get_stat_modifier(self.spellcasting_ability)
         return 8 + self.proficiency_bonus + spell_mod
 
     def recalculate_all_stats(self, full_heal=False):
@@ -233,7 +232,7 @@ class Player:
                     found_feature = feature
         return found_feature
 
-    def can_use_ability(self, ability_name): # Renamed from plan to match existing style
+    def can_use_ability(self, ability_name):
         feature_data = self.get_class_feature(ability_name)
         if not feature_data: return False
         uses = feature_data.get("uses")
@@ -242,7 +241,7 @@ class Player:
             if ability_name in self.used_abilities_this_rest: return False
         return True
 
-    def mark_ability_used(self, ability_name): # Renamed from plan to match existing style
+    def mark_ability_used(self, ability_name):
         feature_data = self.get_class_feature(ability_name)
         if feature_data and feature_data.get("uses") is not None and feature_data.get("refresh_on") is not None:
             self.used_abilities_this_rest.add(ability_name)
@@ -268,9 +267,7 @@ class Player:
         return "You feel fully rested and revitalized."
 
     def reset_turn_actions(self):
-        """Resets flags that track actions taken within a conceptual turn."""
         self.has_taken_action_this_turn = False
-        # In future, could reset bonus actions, reactions etc.
 
     def use_second_wind(self):
         if self.player_class_name != "Fighter": return "Only Fighters can use Second Wind."
@@ -278,10 +275,10 @@ class Player:
         feature_data = self.get_class_feature(feature_name)
         if not feature_data: return "You do not seem to have the Second Wind ability."
 
-        if self.has_taken_action_this_turn: # Assuming Second Wind is an action for now
+        if self.has_taken_action_this_turn:
             return "You have already taken your action this turn."
 
-        if not self.can_use_ability(feature_name): # Check if it's already used this rest
+        if not self.can_use_ability(feature_name):
             return "You have already used Second Wind. You must complete a short or long rest before using it again."
 
         heal_dice = feature_data.get("effect_dice", "1d10"); base_heal = roll_dice(heal_dice)
@@ -300,126 +297,126 @@ class Player:
         self.has_taken_action_this_turn = True
         return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice}, +{level_bonus} level bonus = {total_heal} potential)."
 
-    def use_dash(self, direction_name, world_ref): # Pass world reference for exit checking
-        """Allows a Rogue (L2+) to Dash. Returns dict for main.py to handle move."""
+    def use_dash(self, direction_name, world_ref):
         if not (self.player_class_name == "Rogue" and self.level >= 2):
             return {"success": False, "message": "Only Rogues of level 2 or higher can Dash."}
-
         cunning_action_feature = self.get_class_feature("Cunning Action")
         if not cunning_action_feature or "Dash" not in cunning_action_feature.get("grants_abilities", []):
             return {"success": False, "message": "You do not have the Cunning Action: Dash ability."}
-
         if self.has_taken_action_this_turn:
             return {"success": False, "message": "You have already taken an action this turn."}
-
         if not self.room:
             return {"success": False, "message": "You are not in a valid room to dash from."}
 
-        # Dashing is a combat maneuver, so allow in combat for now.
-        # It consumes the turn's action.
-
-        current_room_obj = self.room # This is a Room object
-
-        # Attempt first move
+        current_room_obj = self.room
         room1_id = current_room_obj.exits.get(direction_name)
         if not room1_id:
             return {"success": False, "message": f"You cannot dash {direction_name} - there is no exit there."}
-
         room1_obj = world_ref.get(room1_id)
         if not room1_obj:
             self.has_taken_action_this_turn = True
-            # Player moves into the 'void' if exit is bad, main.py will handle actual move.
             return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} into an unfamiliar passage..."}
-
-        # Attempt second move from room1
         room2_id = room1_obj.exits.get(direction_name)
         room2_obj = world_ref.get(room2_id) if room2_id else None
-
-        self.has_taken_action_this_turn = True # Dash consumes the action
+        self.has_taken_action_this_turn = True
         if room2_obj:
-            # Successful two-room dash
             return {"success": True, "rooms_moved": 2, "final_room_id": room2_id, "message": f"You swiftly dash {direction_name} two rooms ahead!"}
         else:
-            # Only one room move possible
             return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} one room ahead."}
 
     def get_spell_details(self, spell_name):
-        """Retrieves details for a known spell (currently checks cantrips)."""
-        if not self.player_class_name or not CLASSES_DATA:
-            return None
+        if not self.player_class_name or not CLASSES_DATA: return None
         class_data = CLASSES_DATA.get(self.player_class_name)
-        if not class_data:
-            return None
-
-        # Check known cantrips (defined in classes.json for the class)
+        if not class_data: return None
         known_cantrips = class_data.get("known_cantrips", [])
         for cantrip_data in known_cantrips:
             if cantrip_data.get("name", "").lower() == spell_name.lower():
                 return cantrip_data
-
-        # TODO: Extend to check learned/prepared spells from a spellbook or features
         return None
 
     def get_spell_attack_bonus(self):
-        """Calculates the player's spell attack bonus."""
         if not self.spellcasting_ability:
-            # This case should ideally be prevented by class design or earlier checks
-            print(f"Warning: Player {self.name} has no spellcasting_ability defined for their class {self.player_class_name}.")
-            return self.get_stat_modifier("INT") # Fallback to INT modifier, or could be 0 or raise error
-
+            print(f"Warning: Player {self.name} has no spellcasting_ability for class {self.player_class_name}.")
+            return self.get_stat_modifier("INT")
         modifier = self.get_stat_modifier(self.spellcasting_ability)
         return modifier + self.proficiency_bonus
 
-    def cast_fire_bolt(self, target_mob, combat_resolver): # combat_resolver will be combat.resolve_attack
-        """Casts Fire Bolt at a target mob."""
-        # 1. Check if player can cast (class, level, known spell - basic for now)
-        if self.player_class_name != "Wizard": # Simplified check
-            return ["Only Wizards can cast Fire Bolt this way currently."]
-
-        spell_name = "Fire Bolt"
+    def cast_spell_attack(self, spell_name, target_mob, combat_resolver, current_round_counter=0):
+        """Generic handler for spell attacks like Fire Bolt, Ray of Frost."""
         spell_data = self.get_spell_details(spell_name)
-        if not spell_data:
-            return [f"You do not know the spell '{spell_name}'."]
+        if not spell_data: return [f"You do not know the spell '{spell_name}'."]
 
-        # 2. Check if action is available
-        if self.has_taken_action_this_turn:
-            return ["You have already taken an action this turn."]
+        # Check if the class can cast this specific spell (e.g. Wizard for Fire Bolt/Ray of Frost)
+        # This is a simple check; a more robust system would check a player's actual known/prepared spell list.
+        if self.player_class_name == "Wizard" and spell_name not in [c.get("name") for c in CLASSES_DATA.get("Wizard", {}).get("known_cantrips", [])]:
+             return [f"As a {self.player_class_name}, you don't know '{spell_name}' directly."]
+        # Add similar checks for other classes if they get these spells.
 
-        # 3. Check target validity (simplified)
-        if not target_mob or not hasattr(target_mob, 'is_alive') or not target_mob.is_alive():
-            return ["You need a living target for Fire Bolt."]
+        if spell_data.get("attack_type") != "spell_attack_roll":
+            return [f"'{spell_name}' is not an attack roll spell you can cast this way."]
 
-        # 4. Range check (simplified to same room)
+        if self.has_taken_action_this_turn: return ["You have already taken an action this turn."]
+        if not target_mob or not hasattr(target_mob, 'is_alive') or not target_mob.is_alive(): return ["You need a living target."]
+
         spell_range_type = spell_data.get("range", "same_room")
         if spell_range_type == "same_room":
             if not self.room or not hasattr(target_mob, 'room') or self.room.id != target_mob.room.id:
                 return [f"{target_mob.name} is not in range for {spell_name}."]
-        # TODO: Implement more detailed range checks if spells have specific distances
 
-        # 5. Get spell parameters
         spell_attack_bonus = self.get_spell_attack_bonus()
-        damage_dice = spell_data.get("damage", "1d10")
-        damage_type = spell_data.get("damage_type", "fire")
+        damage_dice = spell_data.get("damage", "0")
+        damage_type = spell_data.get("damage_type", "unknown")
 
-        # Cantrips like Fire Bolt typically don't add spellcasting ability modifier to damage
-        # unless a specific feature allows it (e.g., Warlock's Agonizing Blast).
-        attack_stat_mod_override_for_damage = 0
+        attack_stat_mod_override_for_damage = 0 # Default for most cantrips
+        if spell_data.get("add_ability_mod_to_damage", False):
+            if self.spellcasting_ability:
+                attack_stat_mod_override_for_damage = self.get_stat_modifier(self.spellcasting_ability)
+            else: # Should not happen if can cast
+                attack_stat_mod_override_for_damage = self.get_stat_modifier("INT")
 
-        self.has_taken_action_this_turn = True # Casting a spell consumes the action
 
-        messages = [f"{ANSI_YELLOW}You chant arcane words and unleash a searing {spell_name} at {target_mob.name}!{ANSI_RESET}"]
+        self.has_taken_action_this_turn = True
 
-        # Call the combat resolver, passing spell-specific parameters
+        messages = [f"{ANSI_YELLOW}You cast {spell_name} at {target_mob.name}!{ANSI_RESET}"]
+
         attack_outcome_messages = combat_resolver(
-            attacker=self,
-            defender=target_mob,
+            attacker=self, defender=target_mob,
             attack_bonus_override=spell_attack_bonus,
             damage_dice_override=damage_dice,
             damage_type_override=damage_type,
             attack_stat_mod_override=attack_stat_mod_override_for_damage
         )
         messages.extend(attack_outcome_messages)
+
+        hit_success = False
+        if attack_outcome_messages:
+            # Check if any message indicates a hit or crit, but not a miss.
+            # This is a bit fragile; ideally resolve_attack would return structured hit status.
+            for msg_line in attack_outcome_messages:
+                msg_line_lower = msg_line.lower()
+                if ("hits" in msg_line_lower or "critical hit" in msg_line_lower) and \
+                   "misses" not in msg_line_lower and "miss" not in msg_line_lower:
+                    hit_success = True
+                    break
+
+        if hit_success and spell_data.get("effects_on_hit"):
+            for effect_data in spell_data["effects_on_hit"]:
+                effect_to_apply = effect_data.copy()
+                effect_to_apply["applied_round"] = current_round_counter
+                if hasattr(target_mob, 'apply_status_effect'):
+                    target_mob.apply_status_effect(effect_to_apply)
+                    messages.append(f"{target_mob.name} is affected by {effect_data.get('type')} ({effect_data.get('amount')})!")
         return messages
+
+    def cast_fire_bolt(self, target_mob, combat_resolver, current_round_counter=0):
+        if self.player_class_name != "Wizard":
+            return ["Only Wizards can cast Fire Bolt this way currently."]
+        return self.cast_spell_attack("Fire Bolt", target_mob, combat_resolver, current_round_counter)
+
+    def cast_ray_of_frost(self, target_mob, combat_resolver, current_round_counter=0):
+        if self.player_class_name != "Wizard":
+            return ["Only Wizards can cast Ray of Frost this way currently."]
+        return self.cast_spell_attack("Ray of Frost", target_mob, combat_resolver, current_round_counter)
 
     def equip_item(self, item_to_equip_ref, target_slot_key=None):
         item_data=None; found_in_inventory_ref=None
@@ -549,7 +546,6 @@ class Player:
 
     def take_damage(self, amount, attacker=None):
         self.current_hp -= amount
-        # Add combat log message here if desired, e.g., self.user.send_message(f"You take {amount} damage!")
         if self.current_hp <= 0:
             self.current_hp = 0
             self.handle_death(attacker)
@@ -557,99 +553,63 @@ class Player:
     def handle_death(self, killer=None):
         self.in_combat = False
         self.target = None
-        # Server-side log
         print(f"[INFO] Player {self.name} has died (killed by {killer.name if killer else 'unknown causes'}).")
-        # Player message is handled by main loop after resolve_attack or other death sources
 
     def add_item_to_inventory(self, item_instance_or_dict):
-        # For now, assuming ItemInstance objects are added.
-        # If dicts are added (e.g. from old code or simple item gen), they'll just be dicts.
         self.inventory.append(item_instance_or_dict)
         name_to_show = "item"
-        if hasattr(item_instance_or_dict, 'item_blueprint'): # ItemInstance
+        if hasattr(item_instance_or_dict, 'item_blueprint'):
             name_to_show = item_instance_or_dict.item_blueprint.name
-        elif isinstance(item_instance_or_dict, dict): # dict
+        elif isinstance(item_instance_or_dict, dict):
             name_to_show = item_instance_or_dict.get("name", "item")
         return f"You pick up {name_to_show}."
 
     def remove_item_from_inventory(self, item_name_or_id, quantity=1):
-        # This basic version removes the first match by name/id, and only one.
         item_to_remove_idx = -1
         item_instance_found = None
         for i, inst in enumerate(self.inventory):
-            name_matches = False
-            id_matches = False
-            current_item_name = ""
-            current_item_id = ""
-
-            if hasattr(inst, 'item_blueprint'): # ItemInstance
+            current_item_name = ""; current_item_id = ""
+            if hasattr(inst, 'item_blueprint'):
                 current_item_name = inst.item_blueprint.name.lower()
                 current_item_id = inst.item_blueprint.id.lower()
-            elif isinstance(inst, dict): # dict based item
+            elif isinstance(inst, dict):
                 current_item_name = inst.get("name", "").lower()
                 current_item_id = inst.get("id", "").lower()
-
             if current_item_name == item_name_or_id.lower() or current_item_id == item_name_or_id.lower():
                 item_to_remove_idx = i
-                item_instance_found = inst # This could be an ItemInstance or a dict
+                item_instance_found = inst
                 break
-
         if item_instance_found:
-            # TODO: Handle quantity if items are stackable
             self.inventory.pop(item_to_remove_idx)
-            return item_instance_found # Return the actual item/dict removed
+            return item_instance_found
         return f"You don't have '{item_name_or_id}'."
 
     def get_attack_details(self):
         attack_stat = "STR"; damage_dice = "1d4"; damage_type = "bludgeoning"
         weapon = self.equipment.get(Player.EQUIPMENT_SLOT_WEAPON_MAIN)
-        is_proficient = True # Default to proficient
-
-        if weapon: # Player has a weapon equipped
+        is_proficient = True
+        if weapon:
             props = weapon.get("properties", {})
             damage_dice = props.get("damage_dice", damage_dice)
             damage_type = props.get("damage_type", damage_type)
-
-            # Determine attack stat (STR or DEX for finesse)
             if props.get("finesse"):
                 if self.get_stat_score("DEX") > self.get_stat_score("STR"):
                     attack_stat = "DEX"
-            # TODO: Add logic for ranged weapons using DEX by default if weapon has "ranged" property
-
-            # Check proficiency
-            # class_data = CLASSES_DATA.get(self.player_class_name, {})
-            # weapon_proficiencies = class_data.get("weapon_proficiencies", [])
-            # weapon_category = weapon.get("category", "simple") # e.g. "simple", "martial"
-            # specific_weapon_name = weapon.get("name", "").lower()
-            # if not (weapon_category in weapon_proficiencies or
-            #         specific_weapon_name in weapon_proficiencies or
-            #         (weapon.get("id") and weapon["id"] in weapon_proficiencies) ): # Check by ID too
-            #     is_proficient = False
-        else: # Unarmed strike
-            # Check for Monk's Martial Arts for better unarmed damage if applicable
-            if self.player_class_name == "Monk" and self.level > 0: # Monk feature
-                # Monk's Martial Arts die scales with level, simplified here
+        else:
+            if self.player_class_name == "Monk" and self.level > 0:
                 if self.level < 5: damage_dice = "1d4"
                 elif self.level < 11: damage_dice = "1d6"
                 elif self.level < 17: damage_dice = "1d8"
                 else: damage_dice = "1d10"
-                # Monks can use DEX for unarmed strikes
                 if self.get_stat_score("DEX") > self.get_stat_score("STR"):
                     attack_stat = "DEX"
-            is_proficient = True # Always proficient with unarmed strikes
-
+            is_proficient = True
         attack_bonus_mod = self.get_stat_modifier(attack_stat)
         attack_bonus = attack_bonus_mod
-        if is_proficient:
-            attack_bonus += self.proficiency_bonus
-
+        if is_proficient: attack_bonus += self.proficiency_bonus
         return {
             "attack_bonus": attack_bonus,
             "damage_dice": damage_dice,
             "damage_type": damage_type,
-            "stat_modifier": attack_bonus_mod # Modifier from STR/DEX for damage
+            "stat_modifier": attack_bonus_mod
         }
-
-# Ensure DIRECTIONS is defined if it's used by Player methods (it's not currently, but good practice for context)
-# DIRECTIONS = {"n":"north", ...} # Copied from main.py if needed by Player logic directly
-# For now, Player.use_dash will take a direction_name string.

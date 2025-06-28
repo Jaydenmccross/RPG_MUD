@@ -6,11 +6,11 @@ from server.core.user import UserManager
 from server.core.player import Player, ITEMS_DATA as PLAYER_ITEMS_DATA, load_game_data as core_load_game_data
 from server.core.room import Room
 from server.core.content import Mob, Item, ItemInstance, MobInstance, ContainerInstance
-from server.core.combat import resolve_attack # Added combat import
+from server.core.combat import resolve_attack
 
 HOST = "127.0.0.1"
 PORT = 4000
-GAME_TICK_INTERVAL = 10
+GAME_TICK_INTERVAL = 2 # Reduced for more responsive mob combat during testing; was 10
 
 world = {}
 mobs_blueprints = {}
@@ -19,6 +19,7 @@ ACTIVE_COMBATANTS = []
 combat_lock = threading.Lock()
 CONNECTED_PLAYERS = []
 players_lock = threading.Lock()
+CURRENT_GAME_ROUND = 0 # Initialize game round counter
 
 def add_to_active_combat(entity):
     with combat_lock:
@@ -47,10 +48,7 @@ COMMAND_ALIASES = {
     "l":"look","char":"sheet","character":"sheet","c":"sheet","score":"sheet","stats":"sheet","st":"sheet",
     "eq":"equip","wear":"equip","wield":"equip","rem":"remove","unequip":"remove",
     "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
-    "secondwind": "secondwind",
-    "rest": "rest",
-    "dash": "dash",
-    "cast": "cast" # Added cast
+    "secondwind": "secondwind", "rest": "rest", "dash": "dash", "cast": "cast"
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -85,9 +83,15 @@ def load_world_and_game_data():
     print("[SERVER] Initial room contents spawned.")
 
 def game_tick():
-    global world, mobs_blueprints, ACTIVE_COMBATANTS, CONNECTED_PLAYERS, combat_lock, players_lock
+    global world, mobs_blueprints, ACTIVE_COMBATANTS, CONNECTED_PLAYERS, combat_lock, players_lock, CURRENT_GAME_ROUND
+
+    CURRENT_GAME_ROUND += 1
+    # print(f"Game Tick: Round {CURRENT_GAME_ROUND}") # For debugging
+
     try:
+        # --- MOB & ITEM RESPAWN LOGIC ---
         for room_id, room in world.items():
+            # Mob Respawns
             for mob_def in room.mob_definitions:
                 mob_id_to_spawn=mob_def.get("mob_id");max_qty=mob_def.get("max_quantity",1);respawn_secs=mob_def.get("respawn_seconds",300)
                 if not mob_id_to_spawn or respawn_secs<=0:continue
@@ -103,10 +107,12 @@ def game_tick():
                                 blueprint=mobs_blueprints.get(mob_id_to_spawn)
                                 if blueprint:
                                     new_mob = MobInstance(blueprint)
+                                    new_mob.room = room # Assign room to mob instance
                                     room.mob_instances.append(new_mob)
                                     room.defeated_mob_track.pop(i)
                                     spawned_this_tick_for_def+=1
                                     if spawned_this_tick_for_def>=num_to_spawn:break
+            # Item Respawns
             with combat_lock:
                 for i in range(len(room.pending_item_respawns)-1,-1,-1):
                     item_respawn_entry=room.pending_item_respawns[i];original_def=item_respawn_entry["original_definition"]
@@ -122,6 +128,97 @@ def game_tick():
                             room.add_item_to_ground(new_item_instance)
                             room.pending_item_respawns.pop(i)
                         else:print(f"Warning: Item blueprint ID '{respawn_item_id}' for respawn not found.");room.pending_item_respawns.pop(i)
+
+        # --- AGGRESSIVE MOB AI ---
+        with players_lock, combat_lock: # Lock both for safety
+            for room_id, room in world.items():
+                players_in_room = get_players_in_room(room_id) # Uses its own lock
+                if not players_in_room: continue
+
+                for mob_instance in list(room.mob_instances): # Iterate copy for safe removal
+                    if mob_instance.is_alive() and mob_instance.is_aggressive and not mob_instance.in_combat:
+                        # Simple aggro: pick first player in room not already targeted by this mob
+                        potential_target = None
+                        for p in players_in_room:
+                            if p.is_alive(): # Ensure player is still alive
+                                potential_target = p
+                                break
+
+                        if potential_target:
+                            mob_instance.target = potential_target
+                            mob_instance.in_combat = True
+                            # Check if player is already fighting something else
+                            if not potential_target.in_combat or not potential_target.target:
+                                potential_target.target = mob_instance
+                            potential_target.in_combat = True # Player is now in combat
+
+                            add_to_active_combat(mob_instance)
+                            add_to_active_combat(potential_target)
+                            if hasattr(potential_target.user, 'send_message'):
+                                potential_target.user.send_message(f"{ANSI_RED}{mob_instance.name} suddenly attacks you!{ANSI_RESET}")
+                            # Notify others in room
+                            for p_other in players_in_room:
+                                if p_other != potential_target and hasattr(p_other.user, 'send_message'):
+                                    p_other.user.send_message(f"{mob_instance.name} attacks {potential_target.name}!")
+
+        # --- COMBAT ROUND PROCESSING ---
+        combatants_to_remove_after_processing = []
+        with combat_lock: # Protect ACTIVE_COMBATANTS list
+            if ACTIVE_COMBATANTS:
+                # print(f"DEBUG: Processing {len(ACTIVE_COMBATANTS)} active combatants in round {CURRENT_GAME_ROUND}")
+                for entity in list(ACTIVE_COMBATANTS): # Iterate on a copy for safe removal
+                    if not entity.is_alive():
+                        combatants_to_remove_after_processing.append(entity)
+                        if entity.target and entity.target.target == entity: # Clear target's target if it was this entity
+                            entity.target.target = None
+                            entity.target.in_combat = False # Check if target should also leave combat
+                        continue
+
+                    if isinstance(entity, MobInstance):
+                        entity.tick_status_effects(CURRENT_GAME_ROUND) # Tick mob status effects
+                        if entity.target and entity.target.is_alive() and entity.in_combat:
+                            # Mob attacks its target
+                            # print(f"DEBUG: Mob {entity.name} attacking {entity.target.name}")
+                            attack_messages = resolve_attack(entity, entity.target)
+                            # Send messages to the player being targeted
+                            if hasattr(entity.target.user, 'send_message'):
+                                for line in attack_messages:
+                                    entity.target.user.send_message(line)
+                            # Send messages to other players in the same room as the target
+                            if entity.target.room:
+                                for other_player in get_players_in_room(entity.target.room.id):
+                                    if other_player != entity.target and hasattr(other_player.user, 'send_message'):
+                                        for line in attack_messages: # Send combat details
+                                            other_player.user.send_message(line)
+
+                            if not entity.target.is_alive(): # Player died
+                                entity.target = None; entity.in_combat = False
+                                combatants_to_remove_after_processing.append(entity.target) # Player to be removed
+                                combatants_to_remove_after_processing.append(entity) # Mob also leaves combat
+                        elif not entity.target or not entity.target.is_alive(): # Target died or gone
+                            entity.target = None; entity.in_combat = False
+                            combatants_to_remove_after_processing.append(entity)
+
+                    elif isinstance(entity, Player):
+                        # Player actions are handled by their input, not autonomously in game_tick for attacks.
+                        # However, player status effects could be ticked here if needed.
+                        # For now, player actions reset their 'has_taken_action_this_turn' flag per command.
+                        if not entity.target or not entity.target.is_alive() or not entity.in_combat:
+                             entity.target = None; entity.in_combat = False # Clear if target gone or combat ended by other means
+                             combatants_to_remove_after_processing.append(entity)
+
+
+            for entity_to_remove in set(combatants_to_remove_after_processing): # Use set to avoid duplicates
+                remove_from_active_combat(entity_to_remove)
+                # Additional cleanup if needed (e.g. if mob, ensure its target is cleared)
+                if isinstance(entity_to_remove, MobInstance) and entity_to_remove.target:
+                    if entity_to_remove.target.target == entity_to_remove: # If the target was targeting this mob back
+                        entity_to_remove.target.target = None
+                        # Check if target should also leave combat if this was its only opponent
+                        # This needs more sophisticated multi-combatant logic
+                        # entity_to_remove.target.in_combat = False
+
+
     except Exception as e:print(f"[ERROR] Exception in game_tick: {e}");import traceback;traceback.print_exc()
 
 def game_tick_loop():
@@ -379,10 +476,9 @@ def handle_client(conn, addr):
                             temp_user_for_player.send_message("An unexpected error occurred with dashing.")
                 responded = True
             elif command_word == "cast":
-                if len(args) < 2: # Needs at least spell name and target
+                if len(args) < 2:
                     temp_user_for_player.send_message("Usage: cast \"<spell name>\" <target_name>")
                 else:
-                    # Handle multi-word spell names if quoted
                     spell_name_input = ""
                     target_name_parts = []
                     if args[0].startswith("\""):
@@ -400,13 +496,13 @@ def handle_client(conn, addr):
                                     break
                                 else:
                                     spell_name_buffer.append(part)
-                            else: # First word wasn't quoted, assume single word spell name
+                            else:
                                 spell_name_input = args[0]
                                 target_name_parts = args[1:]
                                 break
-                        if not spell_name_input: # If it was a quote
+                        if not spell_name_input and spell_name_buffer:
                              spell_name_input = " ".join(spell_name_buffer)
-                    else: # Assume single word spell name
+                    else:
                         spell_name_input = args[0]
                         target_name_parts = args[1:]
 
@@ -424,23 +520,28 @@ def handle_client(conn, addr):
                         if not target_mob_instance:
                             temp_user_for_player.send_message(f"You don't see '{target_name}' here or they are not a valid target.")
                         else:
+                            cast_messages = []
+                            # Pass CURRENT_GAME_ROUND for status effect application
                             if spell_name_input.lower() == "fire bolt":
-                                cast_messages = player_instance.cast_fire_bolt(target_mob_instance, resolve_attack)
+                                cast_messages = player_instance.cast_spell_attack("Fire Bolt", target_mob_instance, resolve_attack, CURRENT_GAME_ROUND)
+                            elif spell_name_input.lower() == "ray of frost":
+                                cast_messages = player_instance.cast_spell_attack("Ray of Frost", target_mob_instance, resolve_attack, CURRENT_GAME_ROUND)
+                            else:
+                                temp_user_for_player.send_message(f"You don't know how to cast '{spell_name_input}'.")
+
+                            if cast_messages: # If a known spell was attempted
                                 for line in cast_messages:
                                     temp_user_for_player.send_message(line)
-                                # Check if target died from Fire Bolt
-                                if not target_mob_instance.is_alive():
-                                    player_instance.add_xp(target_mob_instance.xp_value) # Grant XP
+                                if not target_mob_instance.is_alive() and any("hits" in m.lower() or "critical hit" in m.lower() for m in cast_messages): # Check if spell hit and killed
+                                    player_instance.add_xp(target_mob_instance.xp_value)
                                     if player_instance.room: player_instance.room.record_defined_mob_death(target_mob_instance)
                                     if player_instance.room and target_mob_instance in player_instance.room.mob_instances:
                                         player_instance.room.mob_instances.remove(target_mob_instance)
-                                    if player_instance.target == target_mob_instance: # Clear target if it was the one killed
+                                    if player_instance.target == target_mob_instance:
                                         player_instance.target = None
-                                        player_instance.in_combat = False # Leave combat if target died
-                                    remove_from_active_combat(player_instance) # Ensure player is removed if combat ended
+                                        player_instance.in_combat = False
+                                    remove_from_active_combat(player_instance)
                                     remove_from_active_combat(target_mob_instance)
-                            else:
-                                temp_user_for_player.send_message(f"You don't know how to cast '{spell_name_input}'.")
                 responded = True
             elif command_word == "reload":
                 if not args:

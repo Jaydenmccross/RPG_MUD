@@ -348,6 +348,15 @@
             "damage": "1d10",
             "damage_type": "fire",
             "range": "same_room"
+        },
+        {
+          "name": "Ray of Frost",
+          "description": "A frigid beam of blue-white light streaks toward a creature within range. On a hit, it takes 1d8 cold damage, and its speed is reduced by 10 feet until the start of your next turn.",
+          "attack_type": "spell_attack_roll",
+          "damage": "1d8",
+          "damage_type": "cold",
+          "range": "same_room",
+          "effects_on_hit": [{"type": "reduce_speed", "amount": 10, "duration_rounds": 1}]
         }
         // Add other default cantrips like Light, Mage Hand if desired
     ],
