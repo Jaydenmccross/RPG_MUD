@@ -15,7 +15,7 @@
       "17": [4,3,3,3,1], "18": [4,3,3,3,1], "19": [4,3,3,3,2], "20": [4,3,3,3,2]
       // Extend for levels 21-100
     },
-    "cantrips_known_by_level": {"1": 2, "4": 3, "10": 4, "14":5}, // Placeholder, check official progression
+    "cantrips_known_by_level": {"1": 2, "4": 3, "10": 4, "14":5}, // Placeholder, check official progression, ADDED COMMA
     "asi_levels": [4, 8, 12, 16, 19], // Extend to 100
     "features_by_level": {
       "1": [{"name": "Magical Tinkering", "description": "..."}, {"name": "Spellcasting", "description": "..."}],
