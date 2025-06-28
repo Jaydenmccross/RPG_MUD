@@ -204,7 +204,3 @@ class Room:
             print(f"World data saved to {file_path}")
         except Exception as e:
             print(f"Error saving world data to {file_path}: {e}")
-
-```
-
-This comprehensive rewrite should address the issues. I've also added default file paths to `load_rooms` and `save_rooms` for consistency. Note that the `to_dict` method was renamed to `to_dict_for_save` to clarify its purpose for saving the room *definitions* for the editor, not live game state. The `display` method provides the player-facing view.
