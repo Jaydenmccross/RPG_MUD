@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 import random
+import traceback # Added for detailed exception logging
 from server.core.user import UserManager
 from server.core.player import Player, ITEMS_DATA as PLAYER_ITEMS_DATA, load_game_data as core_load_game_data
 from server.core.room import Room
@@ -289,87 +290,95 @@ def handle_client(conn, addr):
             name=player_name,
             base_stats=player_base_stats
         )
+        print(f"[EARLY_DIAG] Player object returned from constructor. Name: {player_instance.name if player_instance else 'None'}")
         print(f"[DEBUG_HANDLE_CLIENT] Player object created: {player_instance.name}")
 
-        add_connected_player(player_instance)
-        print(f"[DEBUG_HANDLE_CLIENT] Player {player_instance.name} added to CONNECTED_PLAYERS.")
+        # Wrapped post-instantiation logic in try-except
+        try:
+            add_connected_player(player_instance)
+            print(f"[DEBUG_HANDLE_CLIENT] Player {player_instance.name} added to CONNECTED_PLAYERS.")
 
-        player_instance.level = user_data.get("level", 1)
-        player_instance.xp = user_data.get("xp", 0)
-        saved_hp = user_data.get("current_hp", player_instance.max_hp)
-        player_instance.current_hp = min(saved_hp, player_instance.max_hp) if saved_hp > 0 else player_instance.max_hp
-        player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", []))
-        print(f"[DEBUG_HANDLE_CLIENT] Player stats set: Level={player_instance.level}, HP={player_instance.current_hp}/{player_instance.max_hp}")
+            player_instance.level = user_data.get("level", 1)
+            player_instance.xp = user_data.get("xp", 0)
+            saved_hp = user_data.get("current_hp", player_instance.max_hp)
+            player_instance.current_hp = min(saved_hp, player_instance.max_hp) if saved_hp > 0 else player_instance.max_hp
+            player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", []))
+            print(f"[DEBUG_HANDLE_CLIENT] Player stats set: Level={player_instance.level}, HP={player_instance.current_hp}/{player_instance.max_hp}")
 
-        player_instance.room_id = user_data.get("current_room_id", "start")
-        print(f"[DEBUG_HANDLE_CLIENT] Player initial room_id: {player_instance.room_id}")
-        current_room_obj = world.get(player_instance.room_id) # Use .get for safety
-        if not current_room_obj:
-            print(f"[DEBUG_HANDLE_CLIENT] Initial room_id '{player_instance.room_id}' not found in world. Defaulting to 'start'.")
-            player_instance.room_id = "start"
-            current_room_obj = world.get("start") # Get 'start' room object
+            player_instance.room_id = user_data.get("current_room_id", "start")
+            print(f"[DEBUG_HANDLE_CLIENT] Player initial room_id: {player_instance.room_id}")
+            current_room_obj = world.get(player_instance.room_id) # Use .get for safety
+            if not current_room_obj:
+                print(f"[DEBUG_HANDLE_CLIENT] Initial room_id '{player_instance.room_id}' not found in world. Defaulting to 'start'.")
+                player_instance.room_id = "start"
+                current_room_obj = world.get("start") # Get 'start' room object
 
-        if current_room_obj:
-            player_instance.room = current_room_obj
-            print(f"[DEBUG_HANDLE_CLIENT] Player assigned to room: {player_instance.room.name if player_instance.room else 'None'}")
-        else:
-            print(f"[DEBUG_HANDLE_CLIENT] CRITICAL: Default 'start' room not found. Player has no room.")
-            # This is a critical state, player might not be able to interact
-            player_instance.room = None # Ensure it's None
+            if current_room_obj:
+                player_instance.room = current_room_obj
+                print(f"[DEBUG_HANDLE_CLIENT] Player assigned to room: {player_instance.room.name if player_instance.room else 'None'}")
+            else:
+                print(f"[DEBUG_HANDLE_CLIENT] CRITICAL: Default 'start' room not found. Player has no room.")
+                player_instance.room = None
 
-        # ... (inventory and equipment loading as before) ...
-        raw_inventory = user_data.get("inventory", [])
-        player_instance.inventory = []
-        for item_rep in raw_inventory:
-            item_id = item_rep.get("item_id")
-            quantity = item_rep.get("quantity", 1)
-            if item_id and PLAYER_ITEMS_DATA:
-                blueprint_dict = PLAYER_ITEMS_DATA.get(item_id)
-                if blueprint_dict:
-                    from server.core.content import Item
-                    blueprint_obj = Item(**blueprint_dict)
-                    if blueprint_obj.type == "container":
-                        player_instance.inventory.append(ContainerInstance(blueprint_obj, quantity))
-                    else:
-                        player_instance.inventory.append(ItemInstance(blueprint_obj, quantity))
-                else: print(f"Warning: Inventory item ID '{item_id}' not found for {player_name}")
-        saved_equipment = user_data.get("equipment", {})
-        if saved_equipment:
-            for slot, item_id_in_save in saved_equipment.items():
-                if item_id_in_save and slot in Player.ALL_EQUIPMENT_SLOTS and PLAYER_ITEMS_DATA:
-                    item_data_from_db = PLAYER_ITEMS_DATA.get(item_id_in_save)
-                    if item_data_from_db: player_instance.equipment[slot] = dict(item_data_from_db)
+            raw_inventory = user_data.get("inventory", [])
+            player_instance.inventory = []
+            for item_rep in raw_inventory:
+                item_id = item_rep.get("item_id")
+                quantity = item_rep.get("quantity", 1)
+                if item_id and PLAYER_ITEMS_DATA:
+                    blueprint_dict = PLAYER_ITEMS_DATA.get(item_id)
+                    if blueprint_dict:
+                        from server.core.content import Item
+                        blueprint_obj = Item(**blueprint_dict)
+                        if blueprint_obj.type == "container":
+                            player_instance.inventory.append(ContainerInstance(blueprint_obj, quantity))
+                        else:
+                            player_instance.inventory.append(ItemInstance(blueprint_obj, quantity))
+                    else: print(f"Warning: Inventory item ID '{item_id}' not found for {player_name}")
+            saved_equipment = user_data.get("equipment", {})
+            if saved_equipment:
+                for slot, item_id_in_save in saved_equipment.items():
+                    if item_id_in_save and slot in Player.ALL_EQUIPMENT_SLOTS and PLAYER_ITEMS_DATA:
+                        item_data_from_db = PLAYER_ITEMS_DATA.get(item_id_in_save)
+                        if item_data_from_db: player_instance.equipment[slot] = dict(item_data_from_db)
 
-        print("[DEBUG_HANDLE_CLIENT] Sending 'Welcome to the MUD!'")
-        temp_user_for_player.send_message("\r\nWelcome to the MUD!")
-        if player_instance.room:
-            print(f"[DIAGNOSTIC_LOG] Attempting to display room. ID: '{player_instance.room.id}', Name: '{player_instance.room.name}'")
-            room_display_content = player_instance.room.display()
-            print(f"[DIAGNOSTIC_LOG] Content from player_instance.room.display():\n{room_display_content}")
-            temp_user_for_player.send_message(room_display_content) # Send room display
-            print(f"[DIAGNOSTIC_LOG] Attempted to send room display to client.")
-        else:
-            print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.") # Kept original debug log
-            temp_user_for_player.send_message("You are in a featureless void. (Error: Room not found)")
-            print(f"[DIAGNOSTIC_LOG] Player has no room. Sent 'featureless void' message.")
+            print("[DEBUG_HANDLE_CLIENT] Sending 'Welcome to the MUD!'")
+            temp_user_for_player.send_message("\r\nWelcome to the MUD!")
+            if player_instance.room:
+                print(f"[DIAGNOSTIC_LOG] Attempting to display room. ID: '{player_instance.room.id}', Name: '{player_instance.room.name}'")
+                room_display_content = player_instance.room.display()
+                print(f"[DIAGNOSTIC_LOG] Content from player_instance.room.display():\n{room_display_content}")
+                temp_user_for_player.send_message(room_display_content)
+                print(f"[DIAGNOSTIC_LOG] Attempted to send room display to client.")
+            else:
+                print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.")
+                temp_user_for_player.send_message("You are in a featureless void. (Error: Room not found)")
+                print(f"[DIAGNOSTIC_LOG] Player has no room. Sent 'featureless void' message.")
 
-        socket_timeout = conn.gettimeout()
-        print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}") # Kept original debug log
+            socket_timeout = conn.gettimeout()
+            print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}")
 
-        print(f"[DIAGNOSTIC_LOG] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}. About to send first prompt and wait for command.")
-        while player_instance.is_alive():
+            print(f"[DIAGNOSTIC_LOG] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}. About to send first prompt and wait for command.")
+
+        except Exception as e_setup:
+            print(f"!!! CRITICAL ERROR in handle_client post-Player instantiation for {username} !!!")
+            print(f"Exception Type: {type(e_setup)}")
+            print(f"Exception Args: {e_setup.args}")
+            print(traceback.format_exc())
+            # The function will likely proceed to the finally block after this if not already exited.
+
+        # Command loop (outside the new try-except for setup phase)
+        while player_instance and player_instance.is_alive(): # Added check for player_instance not None
             player_instance.reset_turn_actions()
-            # print(f"[DEBUG_HANDLE_CLIENT] Top of command loop. Player action reset. Prompting...")
             temp_user_for_player.send_message("\r\n> ")
             msg = temp_user_for_player.read_line()
-            print(f"[DEBUG_HANDLE_CLIENT] Received from client: '{msg}'") # This existing log is good.
+            print(f"[DEBUG_HANDLE_CLIENT] Received from client: '{msg}'")
             if msg is None:
                 print("[DEBUG_HANDLE_CLIENT] msg is None, breaking command loop.")
                 break
 
             stripped_msg = msg.strip()
             if not stripped_msg:
-                # print("[DEBUG_HANDLE_CLIENT] Empty message, continuing.")
                 continue
 
             parts = stripped_msg.split(); command_word = parts[0].lower(); args = parts[1:]
@@ -379,7 +388,6 @@ def handle_client(conn, addr):
 
             if command_word in DIRECTIONS and not args:
                 print("[DEBUG_HANDLE_CLIENT] Matched directional command.")
-                # ... (rest of directional command logic) ...
                 if player_instance.has_taken_action_this_turn:
                     temp_user_for_player.send_message("You have already taken an action this turn.")
                 elif player_instance.in_combat:
@@ -398,7 +406,6 @@ def handle_client(conn, addr):
                 responded = True
             elif command_word == "go":
                 print("[DEBUG_HANDLE_CLIENT] Matched 'go' command.")
-                # ... (rest of go command logic) ...
                 if player_instance.has_taken_action_this_turn:
                      temp_user_for_player.send_message("You have already taken an action this turn.")
                 elif player_instance.in_combat:
@@ -420,7 +427,7 @@ def handle_client(conn, addr):
                 print("[DEBUG_HANDLE_CLIENT] Matched 'look' command.")
                 if not args:
                     if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
-                    else: temp_user_for_player.send_message("You are in a void. There is nothing to see.") # Handle no room
+                    else: temp_user_for_player.send_message("You are in a void. There is nothing to see.")
                 else: temp_user_for_player.send_message(f"You look at {' '.join(args)} closely.")
                 responded = True
             elif command_word == "sheet":
@@ -428,7 +435,6 @@ def handle_client(conn, addr):
                 if not args: temp_user_for_player.send_message(player_instance.display_sheet())
                 else: temp_user_for_player.send_message("Usage: sheet")
                 responded = True
-            # ... (other command handlers with similar debug prints) ...
             elif command_word == "equip":
                 print("[DEBUG_HANDLE_CLIENT] Matched 'equip' command.")
                 if player_instance.has_taken_action_this_turn:
@@ -497,7 +503,6 @@ def handle_client(conn, addr):
                 responded = True
             elif command_word == "kill":
                 print("[DEBUG_HANDLE_CLIENT] Matched 'kill' command.")
-                # ... (kill logic with has_taken_action_this_turn set if attack occurs) ...
                 if player_instance.has_taken_action_this_turn:
                     temp_user_for_player.send_message("You have already taken an action this turn.")
                 elif player_instance.in_combat: temp_user_for_player.send_message("You are already fighting!")
@@ -534,7 +539,6 @@ def handle_client(conn, addr):
                 responded = True
             elif command_word == "dash":
                 print("[DEBUG_HANDLE_CLIENT] Matched 'dash' command.")
-                # ... (dash logic with has_taken_action_this_turn set by Player.use_dash) ...
                 if not args:
                     temp_user_for_player.send_message("Dash where? (e.g., dash north)")
                 else:
@@ -552,7 +556,6 @@ def handle_client(conn, addr):
                                 user_data["current_room_id"] = player_instance.room.id
                                 temp_user_for_player.send_message(player_instance.room.display())
                             temp_user_for_player.send_message(dash_result.get("message", "You dash."))
-                            # player_instance.has_taken_action_this_turn is set in Player.use_dash
                         elif isinstance(dash_result, dict) and not dash_result.get("success"):
                              temp_user_for_player.send_message(dash_result.get("message", "You cannot dash right now."))
                         else:
@@ -560,7 +563,6 @@ def handle_client(conn, addr):
                 responded = True
             elif command_word == "cast":
                 print("[DEBUG_HANDLE_CLIENT] Matched 'cast' command.")
-                # ... (cast logic with has_taken_action_this_turn set by Player methods) ...
                 if len(args) < 2:
                     temp_user_for_player.send_message("Usage: cast \"<spell name>\" <target_name>")
                 else:
@@ -667,15 +669,21 @@ def handle_client(conn, addr):
                 print(f"[DEBUG_HANDLE_CLIENT] Unknown command: '{command_word}'")
                 temp_user_for_player.send_message("I don't understand that command.")
 
-            # print(f"[DEBUG_HANDLE_CLIENT] End of command processing for '{command_word}'. Responded: {responded}")
-
-        if not player_instance.is_alive():
+        if player_instance and not player_instance.is_alive(): # Added check for player_instance not None
             print(f"[DEBUG_HANDLE_CLIENT] Player {player_instance.name} is no longer alive. Sending defeat message.")
             temp_user_for_player.send_message("You have been defeated. Your journey ends here.")
-        print(f"[DEBUG_HANDLE_CLIENT] Exited command loop for {player_instance.name}.")
+
+        # If player_instance became None due to setup error, this log won't have player name
+        player_name_for_log = player_instance.name if player_instance else (username or "unknown")
+        print(f"[DEBUG_HANDLE_CLIENT] Exited command loop for {player_name_for_log}.")
+
 
     except ConnectionResetError: print(f"[-] Connection reset by {addr}")
-    except Exception as e: print(f"[ERROR] Exception in handle_client for {addr}: {e}"); import traceback; traceback.print_exc()
+    except Exception as e:
+        # This is a general catch-all for the entire handle_client function's main try block
+        print(f"[ERROR] Outer Exception in handle_client for {addr}: {e}")
+        import traceback # Ensure traceback is available here too
+        traceback.print_exc()
     finally:
         print(f"[DEBUG_HANDLE_CLIENT] Finally block for {username or 'unknown user'}.")
         if player_instance:
@@ -685,7 +693,7 @@ def handle_client(conn, addr):
                 player_instance.target.target = None
                 player_instance.target.in_combat = False
 
-            if username and user_data:
+            if username and user_data: # Ensure user_data exists before trying to modify it
                 user_data["current_room_id"] = player_instance.room.id if player_instance.room else "start"
                 user_data["equipment"] = {s:(d.get("id",d.get("name")) if isinstance(d,dict) else d) if d else None for s,d in player_instance.equipment.items()}
                 user_data["inventory"] = [

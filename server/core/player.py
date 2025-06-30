@@ -1,5 +1,6 @@
 import json
 import math # For floor
+import traceback # For detailed exception logging
 from server.core.combat import roll_dice
 
 # Globals populated by load_game_data()
@@ -78,25 +79,36 @@ class Player:
         self.in_combat = False
         self.target = None
 
-        if not (CLASSES_DATA and RACES_DATA): load_game_data()
+        try:
+            if not (CLASSES_DATA and RACES_DATA): load_game_data()
 
-        class_data = CLASSES_DATA.get(self.player_class_name)
-        if class_data:
-            for skill in class_data.get("skill_proficiencies", []):
-                self.skill_proficiencies.add(skill)
-            self.spellcasting_ability = class_data.get("spellcasting_ability")
+            class_data = CLASSES_DATA.get(self.player_class_name)
+            if class_data:
+                for skill in class_data.get("skill_proficiencies", []):
+                    self.skill_proficiencies.add(skill)
+                self.spellcasting_ability = class_data.get("spellcasting_ability")
 
-        base_race_data, sub_race_data = self._get_race_data_parts()
-        if base_race_data:
-            for trait in base_race_data.get("traits", []):
-                if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS :
-                    self.skill_proficiencies.add("Perception")
-                if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS:
-                    self.skill_proficiencies.add("Intimidation")
-        if sub_race_data:
-             for trait in sub_race_data.get("traits", []): pass
+            base_race_data, sub_race_data = self._get_race_data_parts()
+            if base_race_data:
+                for trait in base_race_data.get("traits", []):
+                    if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS :
+                        self.skill_proficiencies.add("Perception")
+                    if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS:
+                        self.skill_proficiencies.add("Intimidation")
+            if sub_race_data:
+                 for trait in sub_race_data.get("traits", []): pass # Placeholder for subrace trait processing
 
-        self.recalculate_all_stats(full_heal=True)
+            self.recalculate_all_stats(full_heal=True)
+            print(f"[PLAYER_INIT_DEBUG] {self.name} __init__ completed successfully.")
+
+        except Exception as e:
+            print(f"!!! CRITICAL ERROR in Player.__init__ for {self.name} !!!")
+            print(f"Exception Type: {type(e)}")
+            print(f"Exception Args: {e.args}")
+            print(traceback.format_exc())
+            # Optionally, re-raise or handle more gracefully depending on how critical this is
+            # For now, just logging. The object might be in an inconsistent state.
+            # If self.user is set, could try to inform user, but that might also fail.
 
     def _get_race_data_parts(self):
         if not RACES_DATA: return None, None
