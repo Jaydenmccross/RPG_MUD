@@ -30,8 +30,23 @@ def remove_from_active_combat(entity):
         if entity in ACTIVE_COMBATANTS: ACTIVE_COMBATANTS.remove(entity)
 
 def add_connected_player(player_instance):
-    with players_lock:
-        if player_instance not in CONNECTED_PLAYERS: CONNECTED_PLAYERS.append(player_instance)
+    player_name_for_log = player_instance.name if player_instance else "None"
+    print(f"[ADD_PLAYER_DIAG] Entered add_connected_player for {player_name_for_log}")
+    try:
+        print(f"[ADD_PLAYER_DIAG] Attempting to acquire players_lock for {player_name_for_log}")
+        with players_lock:
+            print(f"[ADD_PLAYER_DIAG] Acquired players_lock for {player_name_for_log}")
+            print(f"[ADD_PLAYER_DIAG] Checking if {player_name_for_log} in CONNECTED_PLAYERS. Current length: {len(CONNECTED_PLAYERS)}")
+            if player_instance not in CONNECTED_PLAYERS:
+                print(f"[ADD_PLAYER_DIAG] Appending {player_name_for_log} to CONNECTED_PLAYERS")
+                CONNECTED_PLAYERS.append(player_instance)
+            else:
+                print(f"[ADD_PLAYER_DIAG] {player_name_for_log} already in CONNECTED_PLAYERS.")
+    except Exception as e_add_player:
+        print(f"!!! ERROR in add_connected_player for {player_name_for_log} !!!")
+        print(traceback.format_exc()) # Assumes traceback is imported globally
+    print(f"[ADD_PLAYER_DIAG] Exiting add_connected_player for {player_name_for_log}")
+
 def remove_connected_player(player_instance):
     with players_lock:
         if player_instance in CONNECTED_PLAYERS: CONNECTED_PLAYERS.remove(player_instance)
