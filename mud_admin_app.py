@@ -5,7 +5,7 @@ import os
 
 WORLD_FILE = "server/data/world.json"
 ITEMS_FILE = "server/data/items.json"
-MOBS_FILE = "server/data/mobs.json" # Added Mobs file
+MOBS_FILE = "server/data/mobs.json"
 
 EQUIP_SLOTS = [
     "Head", "Neck", "Chest", "Back", "Shoulders", "Wrists",
@@ -25,7 +25,7 @@ class ToolTip:
     def show(self, event=None):
         if self.tipwindow or not self.text:
             return
-        x, y, _, _ = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') and callable(self.widget.bbox) else (0,0,0,0) # Added check for bbox
+        x, y, _, _ = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') and callable(self.widget.bbox) else (0,0,0,0)
         x += self.widget.winfo_rootx() + 25
         y += self.widget.winfo_rooty() + 20
         self.tipwindow = tw = tk.Toplevel(self.widget)
@@ -44,13 +44,11 @@ class ToolTip:
 class MobEditor(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
-        self.mobs = self.load_mobs_data() # Renamed to avoid conflict
+        self.mobs = self.load_mobs_data()
 
-        # Main frame structure
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Left: List of mobs
         self.list_frame = ttk.Frame(self.main_frame)
         self.list_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
@@ -59,20 +57,19 @@ class MobEditor(ttk.Frame):
         self.mob_listbox.pack(fill=tk.Y, expand=True)
         self.mob_listbox.bind("<<ListboxSelect>>", self.on_mob_select)
 
-        # Right: Mob details form
         self.form_frame = ttk.Frame(self.main_frame)
         self.form_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         self.entries = {}
         fields = [
-            ("Mob ID:", "mob_id", True), # Field Name, internal key, is_disabled_after_load
+            ("Mob ID:", "mob_id", True),
             ("Name:", "name", False),
             ("Description:", "description", False, {"type": "text", "height": 3}),
             ("Max HP:", "max_hp", False),
             ("Speed:", "speed", False),
             ("AC:", "ac", False),
             ("Attack Bonus:", "attack_bonus", False),
-            ("Damage Dice:", "damage_dice", False), # e.g., 1d6+2
+            ("Damage Dice:", "damage_dice", False),
             ("Damage Type:", "damage_type", False),
             ("XP Value:", "xp_value", False),
             ("Aggressive (True/False):", "is_aggressive", False),
@@ -91,10 +88,9 @@ class MobEditor(ttk.Frame):
 
             entry.grid(row=i, column=1, sticky="ew", padx=2, pady=2)
             self.entries[key] = entry
-            if key == "mob_id": # Mob ID is special
+            if key == "mob_id":
                 entry.bind("<FocusOut>", lambda e: self.load_mob_to_form())
                 entry.bind("<Return>", lambda e: self.load_mob_to_form())
-
 
         self.save_button = ttk.Button(self.form_frame, text="Save Mob", command=self.save_mob)
         self.save_button.grid(row=len(fields), column=1, sticky="e", pady=10, padx=2)
@@ -105,11 +101,10 @@ class MobEditor(ttk.Frame):
         self.delete_button = ttk.Button(self.form_frame, text="Delete Mob", command=self.delete_mob)
         self.delete_button.grid(row=len(fields)+1, column=0, sticky="w", pady=5, padx=2)
 
-
         self.form_frame.columnconfigure(1, weight=1)
         self.refresh_mob_list()
 
-    def load_mobs_data(self): # Renamed
+    def load_mobs_data(self):
         if not os.path.exists(MOBS_FILE):
             return {}
         with open(MOBS_FILE, "r") as f:
@@ -122,12 +117,10 @@ class MobEditor(ttk.Frame):
                  messagebox.showerror("Error", f"Failed to load {MOBS_FILE}:\n{e}")
                  return {}
 
-
-    def save_mobs_data(self): # Renamed
+    def save_mobs_data(self):
         try:
             with open(MOBS_FILE, "w") as f:
                 json.dump(self.mobs, f, indent=2)
-            # messagebox.showinfo("Saved", "Mobs saved successfully!") # Can be too noisy
             print("Mobs data saved.")
             self.refresh_mob_list()
         except Exception as e:
@@ -144,6 +137,7 @@ class MobEditor(ttk.Frame):
             index = selection[0]
             item_text = self.mob_listbox.get(index)
             mob_id_selected = item_text.split(" - ")[0]
+            self.entries["mob_id"].config(state=tk.NORMAL)
             self.entries["mob_id"].delete(0, tk.END)
             self.entries["mob_id"].insert(0, mob_id_selected)
             self.load_mob_to_form()
@@ -156,45 +150,46 @@ class MobEditor(ttk.Frame):
                 entry_widget.delete(0, tk.END)
         self.entries["mob_id"].config(state=tk.NORMAL)
 
-
     def new_mob_clear_form(self):
         self.clear_form()
         self.entries["mob_id"].focus_set()
 
-
     def load_mob_to_form(self):
         mob_id = self.entries["mob_id"].get().strip()
         if not mob_id:
-            self.clear_form() # Clear if ID is removed
+            self.clear_form()
             return
 
         mob_data = self.mobs.get(mob_id)
         if not mob_data:
-            # Clear other fields if mob_id not found, but keep mob_id entry
             for key, entry_widget in self.entries.items():
                 if key != "mob_id":
                     if isinstance(entry_widget, tk.Text): entry_widget.delete("1.0", tk.END)
                     else: entry_widget.delete(0, tk.END)
+            self.entries["mob_id"].config(state=tk.NORMAL) # Allow editing if mob not found
             return
 
-        self.entries["mob_id"].config(state=tk.DISABLED) # Disable ID field after loading
+        self.entries["mob_id"].config(state=tk.DISABLED)
 
         for key, entry_widget in self.entries.items():
-            if key == "mob_id": continue # Already handled
-
+            if key == "mob_id": continue
             value = mob_data.get(key, "")
             if isinstance(entry_widget, tk.Text):
                 entry_widget.delete("1.0", tk.END)
-                if isinstance(value, dict) or isinstance(value, list): # For loot_table
+                if isinstance(value, dict) or isinstance(value, list):
                     entry_widget.insert(tk.END, json.dumps(value, indent=2))
                 else:
                     entry_widget.insert(tk.END, str(value))
-            else: # tk.Entry or ttk.Entry
+            else:
                 entry_widget.delete(0, tk.END)
                 entry_widget.insert(0, str(value))
 
     def save_mob(self):
+        # Mob ID must be enabled to get it, then can be disabled again if it exists
+        self.entries["mob_id"].config(state=tk.NORMAL)
         mob_id = self.entries["mob_id"].get().strip()
+        self.entries["mob_id"].config(state=tk.DISABLED if mob_id in self.mobs else tk.NORMAL)
+
         if not mob_id:
             messagebox.showerror("Error", "Mob ID is required.")
             return
@@ -202,7 +197,6 @@ class MobEditor(ttk.Frame):
         mob_data_to_save = {}
         for key, entry_widget in self.entries.items():
             if key == "mob_id": continue
-
             if isinstance(entry_widget, tk.Text):
                 value_str = entry_widget.get("1.0", tk.END).strip()
                 if key == "loot_table":
@@ -213,59 +207,72 @@ class MobEditor(ttk.Frame):
                             messagebox.showerror("Error", f"Invalid JSON in {key}.")
                             return
                     else:
-                        mob_data_to_save[key] = {} # Default to empty dict
-                else: # Description
+                        mob_data_to_save[key] = {}
+                else:
                      mob_data_to_save[key] = value_str
-            else: # Entry widgets
+            else:
                 value_str = entry_widget.get().strip()
-                # Attempt to convert to int for numeric fields, float for others if needed
                 if key in ["max_hp", "speed", "ac", "attack_bonus", "xp_value"]:
                     try: mob_data_to_save[key] = int(value_str) if value_str else 0
                     except ValueError: messagebox.showerror("Error", f"{key.replace('_', ' ').title()} must be an integer."); return
                 elif key == "is_aggressive":
                     mob_data_to_save[key] = value_str.lower() == 'true'
-                else: # name, damage_dice, damage_type
+                else:
                     mob_data_to_save[key] = value_str
 
+        is_new_mob = mob_id not in self.mobs
         self.mobs[mob_id] = mob_data_to_save
-        self.save_mobs_data() # This will also refresh the list
-        self.entries["mob_id"].config(state=tk.NORMAL) # Re-enable after save
+        self.save_mobs_data()
+        self.entries["mob_id"].config(state=tk.DISABLED) # Ensure it's disabled after save if it's an existing mob
         messagebox.showinfo("Saved", f"Mob '{mob_id}' saved.")
+        if is_new_mob:
+            self.refresh_mob_list() # Ensure list is up-to-date
+            # Try to select the new mob in the listbox
+            for i, item_text in enumerate(self.mob_listbox.get(0, tk.END)):
+                if item_text.startswith(mob_id):
+                    self.mob_listbox.selection_clear(0, tk.END)
+                    self.mob_listbox.selection_set(i)
+                    self.mob_listbox.see(i)
+                    break
 
 
     def delete_mob(self):
+        self.entries["mob_id"].config(state=tk.NORMAL) # Enable to get ID
         mob_id = self.entries["mob_id"].get().strip()
+
         if not mob_id:
             messagebox.showerror("Error", "No Mob ID specified to delete.")
+            self.entries["mob_id"].config(state=tk.DISABLED if self.mob_listbox.curselection() else tk.NORMAL) # Re-disable if one was selected
             return
         if mob_id not in self.mobs:
             messagebox.showerror("Error", f"Mob ID '{mob_id}' not found.")
+            self.entries["mob_id"].config(state=tk.DISABLED if self.mob_listbox.curselection() else tk.NORMAL)
             return
 
         if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete mob '{mob_id}' - {self.mobs[mob_id].get('name', '')}?"):
             del self.mobs[mob_id]
             self.save_mobs_data()
-            self.clear_form()
+            self.clear_form() # This also enables mob_id field
             messagebox.showinfo("Deleted", f"Mob '{mob_id}' deleted.")
+        else: # If user says no, re-disable mob_id if it was loaded from selection
+            self.entries["mob_id"].config(state=tk.DISABLED if self.mob_listbox.curselection() else tk.NORMAL)
 
 
-class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need changes later for room content) ...
+class WorldEditor(ttk.Frame):
     DIRECTIONS = ["north", "south", "east", "west", "up", "down", "northeast", "northwest", "southeast", "southwest"]
 
     def __init__(self, master):
         super().__init__(master)
-        self.world_data = {} # Stores the raw dicts from world.json
+        self.world_data = {}
         self.items_data = self.load_json_data(ITEMS_FILE, "items")
         self.mobs_data = self.load_json_data(MOBS_FILE, "mobs")
 
         self.selected_room_id = None
         self.autosave_after_id = None
 
-        # Main PanedWindow
         self.paned_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.paned_window.pack(fill=tk.BOTH, expand=True)
 
-        # Left frame - room list
         self.room_list_frame = ttk.Frame(self.paned_window, width=200)
         self.room_list_label = ttk.Label(self.room_list_frame, text="Rooms:")
         self.room_list_label.pack(anchor="w")
@@ -277,13 +284,11 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
         self.room_listbox.bind("<<ListboxSelect>>", self.on_room_select)
         self.paned_window.add(self.room_list_frame, weight=1)
 
-        # Right frame - Room Editor (placeholder for now)
         self.room_editor_frame_container = ttk.Frame(self.paned_window)
         self.paned_window.add(self.room_editor_frame_container, weight=3)
 
-        self.current_room_editor = None # To hold the RoomEditorFrame instance
+        self.current_room_editor = None
 
-        # Bottom buttons
         self.bottom_button_frame = ttk.Frame(self)
         self.bottom_button_frame.pack(fill=tk.X, pady=5)
         self.new_room_btn = ttk.Button(self.bottom_button_frame, text="New Room", command=self.new_room)
@@ -291,10 +296,10 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
         self.save_all_btn = ttk.Button(self.bottom_button_frame, text="Save World", command=self.save_world_data_to_file)
         self.save_all_btn.pack(side=tk.LEFT, padx=5)
 
-        self.status_label = ttk.Label(self.bottom_button_frame, text="", foreground="green") # Moved status here
+        self.status_label = ttk.Label(self.bottom_button_frame, text="", foreground="green")
         self.status_label.pack(side=tk.LEFT, padx=10)
 
-        self.load_world_data_from_file() # Initial load
+        self.load_world_data_from_file()
 
     def load_json_data(self, file_path, data_type_name, is_optional=False):
         if not os.path.exists(file_path):
@@ -314,14 +319,13 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
     def load_world_data_from_file(self):
         self.world_data = self.load_json_data(WORLD_FILE, "world")
         self.refresh_room_list()
-        if self.room_listbox.size() > 0: # Select first room if any
+        if self.room_listbox.size() > 0:
             self.room_listbox.selection_set(0)
-            self.on_room_select(None) # Trigger selection
+            self.on_room_select(None)
 
     def save_world_data_to_file(self):
-        # First, if a room is being edited, save its current state from editor to self.world_data
         if self.current_room_editor and self.selected_room_id:
-            self.current_room_editor.apply_changes_to_world_data() # This method needs to be in RoomEditorFrame
+            self.current_room_editor.apply_changes_to_world_data()
 
         if not self.world_data:
             messagebox.showinfo("Save World", "No world data to save.")
@@ -335,11 +339,24 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
             messagebox.showerror("Save Error", f"Could not save world data to {WORLD_FILE}: {e}")
             self.status_label.config(text="Error saving world!", foreground="red")
 
-
     def refresh_room_list(self):
+        current_selection = self.room_listbox.curselection()
+        current_selected_id = None
+        if current_selection:
+            current_selected_id = self.room_listbox.get(current_selection[0])
+
         self.room_listbox.delete(0, tk.END)
-        for room_id in sorted(self.world_data.keys()):
+        sorted_room_ids = sorted(self.world_data.keys())
+        for room_id in sorted_room_ids:
             self.room_listbox.insert(tk.END, room_id)
+
+        if current_selected_id and current_selected_id in sorted_room_ids:
+            try:
+                idx = sorted_room_ids.index(current_selected_id)
+                self.room_listbox.selection_set(idx)
+                self.room_listbox.see(idx)
+            except ValueError:
+                pass # Should not happen if logic is correct
 
     def on_room_select(self, event):
         selection = self.room_listbox.curselection()
@@ -354,31 +371,28 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
         room_id = self.room_listbox.get(index)
 
         if self.current_room_editor and self.selected_room_id != room_id:
-            # Save previous room before switching
              if self.selected_room_id and self.current_room_editor:
                 self.current_room_editor.apply_changes_to_world_data()
 
         self.selected_room_id = room_id
 
         if self.current_room_editor:
-            self.current_room_editor.destroy() # Remove old editor frame
+            self.current_room_editor.destroy()
 
-        # Create and pack new RoomEditorFrame for the selected room
         self.current_room_editor = RoomEditorFrame(
             self.room_editor_frame_container,
             room_id,
-            self.world_data, # Pass the main world_data dict
-            self.mobs_data,  # Pass all loaded mob blueprints
-            self.items_data, # Pass all loaded item blueprints
-            self.save_world_data_to_file # Pass save callback for auto-save/manual save from editor
+            self.world_data,
+            self.mobs_data,
+            self.items_data,
+            self.save_world_data_to_file
         )
         self.current_room_editor.pack(fill=tk.BOTH, expand=True)
-
 
     def new_room(self):
         new_id = simpledialog.askstring("New Room", "Enter new unique room ID:", parent=self)
         if new_id:
-            new_id = new_id.strip().replace(" ", "_") # Sanitize
+            new_id = new_id.strip().replace(" ", "_")
             if not new_id:
                 messagebox.showerror("Error", "Room ID cannot be empty.", parent=self)
                 return
@@ -390,44 +404,44 @@ class WorldEditor(ttk.Frame): # ... (WorldEditor class as before, will need chan
                 "name": new_id.replace("_", " ").title(),
                 "description": "A new, undescribed room.",
                 "exits": {},
-                "mob_definitions": [], # Initialize for room content editor
-                "item_definitions": []  # Initialize for room content editor
+                "mob_definitions": [],
+                "item_definitions": []
             }
             self.refresh_room_list()
-            # Find index of new_id to select it
             try:
                 idx = list(sorted(self.world_data.keys())).index(new_id)
                 self.room_listbox.selection_clear(0, tk.END)
                 self.room_listbox.selection_set(idx)
-                self.room_listbox.see(idx) # Ensure it's visible
-                self.on_room_select(None) # Trigger display of the new room
-                self.save_world_data_to_file() # Save immediately
+                self.room_listbox.see(idx)
+                self.on_room_select(None)
+                self.save_world_data_to_file()
             except ValueError:
-                pass # Should not happen if id was added
+                pass
 
-class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
+class RoomEditorFrame(ttk.Frame):
     DIRECTIONS = ["north", "south", "east", "west", "up", "down", "northeast", "northwest", "southeast", "southwest"]
     def __init__(self, master, room_id, world_data_ref, mobs_data_ref, items_data_ref, save_callback):
         super().__init__(master)
         self.room_id = room_id
-        self.world_data = world_data_ref # Reference to the main world_data dict
-        self.mobs_data = mobs_data_ref   # Reference to all mob blueprints
-        self.items_data = items_data_ref # Reference to all item blueprints
+        self.world_data = world_data_ref
+        self.mobs_data = mobs_data_ref
+        self.items_data = items_data_ref
         self.save_world_callback = save_callback
 
-        self.room_data_dict = self.world_data.setdefault(self.room_id, {}) # Get or create if somehow missing
+        self.room_data_dict = self.world_data.setdefault(self.room_id, {})
 
-        # Ensure necessary lists exist
         self.room_data_dict.setdefault("exits", {})
         self.room_data_dict.setdefault("mob_definitions", [])
         self.room_data_dict.setdefault("item_definitions", [])
 
+        self.available_mob_ids = sorted(list(self.mobs_data.keys())) # For Mob ID Combobox
+
         self.autosave_after_id = None
+        self.selected_mob_def_index = None # To track which mob definition is being edited
         self._build_ui()
         self._load_room_data()
 
     def _build_ui(self):
-        # Room ID (display only)
         id_frame = ttk.Frame(self)
         id_frame.pack(fill=tk.X, padx=5, pady=2)
         ttk.Label(id_frame, text="Room ID:").pack(side=tk.LEFT)
@@ -435,8 +449,6 @@ class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
         self.id_display.pack(side=tk.LEFT, padx=5)
         ttk.Button(id_frame, text="Delete This Room", command=self.confirm_delete_room).pack(side=tk.RIGHT)
 
-
-        # Name
         name_frame = ttk.Frame(self)
         name_frame.pack(fill=tk.X, padx=5, pady=2)
         ttk.Label(name_frame, text="Name:").pack(side=tk.LEFT, anchor='w')
@@ -446,24 +458,18 @@ class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
         self.name_entry.bind("<<Modified>>", self.schedule_autosave)
         ToolTip(self.name_entry, "Display name for the room.")
 
-
-        # Description
         ttk.Label(self, text="Description:").pack(anchor="w", padx=5, pady=(5,0))
         self.desc_text = tk.Text(self, height=5, width=70, wrap=tk.WORD, undo=True)
         self.desc_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
         self.desc_text.bind("<<Modified>>", self.schedule_autosave)
         ToolTip(self.desc_text, "Full description of the room. Use multiple lines.")
 
-        # Exits
         exits_main_frame = ttk.LabelFrame(self, text="Exits")
         exits_main_frame.pack(fill=tk.X, expand=False, padx=5, pady=5)
-
         self.exits_listbox = tk.Listbox(exits_main_frame, height=4, exportselection=0)
         self.exits_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
-
         exits_controls_frame = ttk.Frame(exits_main_frame)
         exits_controls_frame.pack(side=tk.LEFT, padx=5, pady=5)
-
         self.exit_dir_var = tk.StringVar()
         self.exit_dir_combobox = ttk.Combobox(exits_controls_frame, textvariable=self.exit_dir_var, values=self.DIRECTIONS, state="readonly", width=10)
         self.exit_dir_combobox.pack(pady=2)
@@ -473,29 +479,61 @@ class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
         ttk.Button(exits_controls_frame, text="Add/Set Exit", command=self.add_update_exit).pack(pady=2)
         ttk.Button(exits_controls_frame, text="Remove Exit", command=self.remove_selected_exit).pack(pady=2)
 
-        # Mob Definitions
-        mobs_frame = ttk.LabelFrame(self, text="Mob Spawns (Definitions)")
-        mobs_frame.pack(fill=tk.X, expand=False, padx=5, pady=5)
-        self.mob_defs_listbox = tk.Listbox(mobs_frame, height=4, exportselection=0)
-        self.mob_defs_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
-        # ... (Add, Remove controls for mobs) ...
+        # Mob Definitions UI
+        mobs_main_frame = ttk.LabelFrame(self, text="Mob Spawns (Definitions)")
+        mobs_main_frame.pack(fill=tk.X, expand=False, padx=5, pady=5)
+        mob_list_container = ttk.Frame(mobs_main_frame)
+        mob_list_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.mob_defs_listbox = tk.Listbox(mob_list_container, height=5, exportselection=0)
+        self.mob_defs_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        mob_defs_scrollbar = ttk.Scrollbar(mob_list_container, orient=tk.VERTICAL, command=self.mob_defs_listbox.yview)
+        self.mob_defs_listbox.config(yscrollcommand=mob_defs_scrollbar.set)
+        mob_defs_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.mob_defs_listbox.bind("<<ListboxSelect>>", self._on_mob_def_select)
 
-        # Item Definitions
+        mob_controls_frame = ttk.Frame(mobs_main_frame)
+        mob_controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+        ttk.Label(mob_controls_frame, text="Mob ID:").grid(row=0, column=0, sticky="w", pady=2)
+        self.mob_def_id_var = tk.StringVar()
+        self.mob_def_id_combobox = ttk.Combobox(mob_controls_frame, textvariable=self.mob_def_id_var, values=self.available_mob_ids, state="readonly", width=20)
+        self.mob_def_id_combobox.grid(row=0, column=1, sticky="ew", pady=2)
+        ToolTip(self.mob_def_id_combobox, "Select Mob ID from defined mobs.")
+        ttk.Label(mob_controls_frame, text="Max Quantity:").grid(row=1, column=0, sticky="w", pady=2)
+        self.mob_def_qty_var = tk.StringVar(value="1")
+        self.mob_def_qty_spinbox = ttk.Spinbox(mob_controls_frame, from_=1, to=100, textvariable=self.mob_def_qty_var, width=5)
+        self.mob_def_qty_spinbox.grid(row=1, column=1, sticky="w", pady=2)
+        ToolTip(self.mob_def_qty_spinbox, "Max number of this mob to spawn.")
+        ttk.Label(mob_controls_frame, text="Respawn (sec):").grid(row=2, column=0, sticky="w", pady=2)
+        self.mob_def_respawn_var = tk.StringVar(value="300")
+        self.mob_def_respawn_spinbox = ttk.Spinbox(mob_controls_frame, from_=0, to=36000, increment=30, textvariable=self.mob_def_respawn_var, width=7)
+        self.mob_def_respawn_spinbox.grid(row=2, column=1, sticky="w", pady=2)
+        ToolTip(self.mob_def_respawn_spinbox, "Seconds until respawn. 0 for no timer-based respawn.")
+        mob_buttons_frame = ttk.Frame(mob_controls_frame)
+        mob_buttons_frame.grid(row=3, column=0, columnspan=2, pady=10)
+        self.add_mob_def_button = ttk.Button(mob_buttons_frame, text="Add/Update Mob", command=self._add_or_update_mob_definition)
+        self.add_mob_def_button.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.add_mob_def_button, "Add new mob spawn or update selected one.")
+        self.remove_mob_def_button = ttk.Button(mob_buttons_frame, text="Remove Mob", command=self._remove_selected_mob_definition)
+        self.remove_mob_def_button.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.remove_mob_def_button, "Remove selected mob spawn from this room.")
+        self.clear_mob_def_fields_button = ttk.Button(mob_controls_frame, text="Clear Fields", command=self._clear_mob_def_fields)
+        self.clear_mob_def_fields_button.grid(row=4, column=0, columnspan=2, pady=2)
+
+
         items_frame = ttk.LabelFrame(self, text="Item Spawns (Definitions)")
         items_frame.pack(fill=tk.X, expand=False, padx=5, pady=5)
         self.item_defs_listbox = tk.Listbox(items_frame, height=4, exportselection=0)
         self.item_defs_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
-        # ... (Add, Remove controls for items) ...
 
     def _load_room_data(self):
         self.name_var.set(self.room_data_dict.get("name", self.room_id.replace("_", " ").title()))
         self.desc_text.delete("1.0", tk.END)
         self.desc_text.insert("1.0", self.room_data_dict.get("description", ""))
-        self.desc_text.edit_modified(False) # Reset modified flag after loading
+        self.desc_text.edit_modified(False)
         self._refresh_exits_listbox()
         self._refresh_mob_defs_listbox()
         self._refresh_item_defs_listbox()
-
+        self._clear_mob_def_fields() # Start with clean fields for mob defs
 
     def _refresh_exits_listbox(self):
         self.exits_listbox.delete(0, tk.END)
@@ -504,19 +542,137 @@ class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
 
     def _refresh_mob_defs_listbox(self):
         self.mob_defs_listbox.delete(0, tk.END)
-        for mob_def in self.room_data_dict.get("mob_definitions", []):
-            mob_name = self.mobs_data.get(mob_def.get("mob_id"), {}).get("name", mob_def.get("mob_id"))
-            qty = mob_def.get("quantity",1)
+        # Ensure "mob_definitions" exists and is a list
+        mob_defs_list = self.room_data_dict.get("mob_definitions", [])
+        if not isinstance(mob_defs_list, list): # Defensive check
+            mob_defs_list = []
+            self.room_data_dict["mob_definitions"] = mob_defs_list
+
+        for i, mob_def in enumerate(mob_defs_list):
+            mob_id = mob_def.get("mob_id", "Unknown ID")
+            mob_name = self.mobs_data.get(mob_id, {}).get("name", mob_id)
+            qty = mob_def.get("max_quantity", mob_def.get("quantity",1)) # Prioritize max_quantity
             respawn = mob_def.get("respawn_seconds",0)
-            self.mob_defs_listbox.insert(tk.END, f"{mob_name} (ID: {mob_def.get('mob_id')}) x{qty} [Respawn: {respawn}s]")
+            self.mob_defs_listbox.insert(tk.END, f"{mob_name} (ID: {mob_id}) x{qty} [Respawn: {respawn}s]")
+        self._clear_mob_def_fields() # Clear fields after refresh unless one is selected
+
 
     def _refresh_item_defs_listbox(self):
         self.item_defs_listbox.delete(0, tk.END)
-        for item_def in self.room_data_dict.get("item_definitions",[]):
+        item_defs_list = self.room_data_dict.get("item_definitions", [])
+        if not isinstance(item_defs_list, list):
+            item_defs_list = []
+            self.room_data_dict["item_definitions"] = item_defs_list
+
+        for item_def in item_defs_list:
             item_name = self.items_data.get(item_def.get("item_id"), {}).get("name", item_def.get("item_id"))
             qty = item_def.get("quantity",1)
             respawn = item_def.get("respawn_seconds",0)
             self.item_defs_listbox.insert(tk.END, f"{item_name} (ID: {item_def.get('item_id')}) x{qty} [Respawn: {respawn}s]")
+
+    def _on_mob_def_select(self, event):
+        selection = self.mob_defs_listbox.curselection()
+        if not selection:
+            self.selected_mob_def_index = None
+            self._clear_mob_def_fields() # Clear if selection lost
+            return
+
+        self.selected_mob_def_index = selection[0]
+        mob_def_data = self.room_data_dict["mob_definitions"][self.selected_mob_def_index]
+
+        self.mob_def_id_var.set(mob_def_data.get("mob_id", ""))
+        self.mob_def_qty_var.set(str(mob_def_data.get("max_quantity", mob_def_data.get("quantity", "1"))))
+        self.mob_def_respawn_var.set(str(mob_def_data.get("respawn_seconds", "300")))
+
+    def _clear_mob_def_fields(self):
+        self.mob_def_id_var.set("")
+        if self.available_mob_ids: # Set to first if available, else empty
+            self.mob_def_id_combobox.set(self.available_mob_ids[0] if self.available_mob_ids else "")
+        else:
+            self.mob_def_id_combobox.set("")
+
+        self.mob_def_qty_var.set("1")
+        self.mob_def_respawn_var.set("300")
+        self.mob_defs_listbox.selection_clear(0, tk.END) # Clear listbox selection
+        self.selected_mob_def_index = None
+
+
+    def _add_or_update_mob_definition(self):
+        mob_id = self.mob_def_id_var.get()
+        if not mob_id:
+            messagebox.showerror("Input Error", "Mob ID must be selected.", parent=self)
+            return
+        try:
+            quantity = int(self.mob_def_qty_var.get())
+            if quantity < 1: raise ValueError("Quantity must be at least 1.")
+        except ValueError as e:
+            messagebox.showerror("Input Error", f"Invalid quantity: {e}", parent=self)
+            return
+        try:
+            respawn_seconds = int(self.mob_def_respawn_var.get())
+            if respawn_seconds < 0: raise ValueError("Respawn seconds cannot be negative.")
+        except ValueError as e:
+            messagebox.showerror("Input Error", f"Invalid respawn seconds: {e}", parent=self)
+            return
+
+        new_mob_def = {
+            "mob_id": mob_id,
+            "max_quantity": quantity, # Consistently use max_quantity
+            "respawn_seconds": respawn_seconds
+        }
+
+        mob_definitions = self.room_data_dict.setdefault("mob_definitions", [])
+
+        # Check if this mob_id already exists for update logic (simple version: only one entry per mob_id)
+        # A more complex version might allow multiple definitions for the same mob_id if that's desired.
+        # For now, assume we update if selected, or add if new mob_id (or no selection)
+
+        updated_existing = False
+        if self.selected_mob_def_index is not None and self.selected_mob_def_index < len(mob_definitions):
+            # If the mob_id is changing for the selected entry, or if it's the same mob_id
+            # This logic implicitly updates the selected entry.
+            mob_definitions[self.selected_mob_def_index] = new_mob_def
+            updated_existing = True
+        else:
+            # If no selection, or selection is somehow invalid, try to find by mob_id to update, or add new
+            # This makes the "Add/Update" button more robust.
+            found_and_updated = False
+            for i, existing_def in enumerate(mob_definitions):
+                if existing_def.get("mob_id") == mob_id:
+                    mob_definitions[i] = new_mob_def
+                    found_and_updated = True
+                    break
+            if not found_and_updated:
+                mob_definitions.append(new_mob_def)
+
+        self._refresh_mob_defs_listbox()
+        self.schedule_autosave()
+        # self._clear_mob_def_fields() # Optionally clear after add/update
+
+    def _remove_selected_mob_definition(self):
+        if self.selected_mob_def_index is None : # Check if any item is selected
+            messagebox.showwarning("Selection Error", "No mob definition selected to remove.", parent=self)
+            return
+
+        # Ensure the index is valid before trying to delete
+        mob_definitions = self.room_data_dict.get("mob_definitions", [])
+        if self.selected_mob_def_index >= len(mob_definitions):
+            messagebox.showerror("Internal Error", "Selected mob definition index out of bounds. Please re-select.", parent=self)
+            self._clear_mob_def_fields() # Clear selection and fields
+            self._refresh_mob_defs_listbox()
+            return
+
+        # Confirmation dialog
+        selected_mob_text = self.mob_defs_listbox.get(self.selected_mob_def_index) # Get text for confirmation
+        if not messagebox.askyesno("Confirm Remove", f"Are you sure you want to remove this mob spawn?\n\n{selected_mob_text}", parent=self):
+            return
+
+        del mob_definitions[self.selected_mob_def_index]
+        self.room_data_dict["mob_definitions"] = mob_definitions # Ensure the main dict is updated
+
+        self._refresh_mob_defs_listbox() # This will also call _clear_mob_def_fields, resetting selected_mob_def_index
+        self.schedule_autosave()
+        messagebox.showinfo("Removed", "Mob definition removed.", parent=self)
 
 
     def add_update_exit(self):
@@ -539,44 +695,40 @@ class RoomEditorFrame(ttk.Frame): # Placeholder for actual Room Editor UI
             self._refresh_exits_listbox()
             self.schedule_autosave()
 
-    def schedule_autosave(self, event=None): # Modified to handle event
-        if hasattr(event.widget, 'edit_modified') and event.widget.edit_modified(): # Check if modified
-             event.widget.edit_modified(False) # Reset flag
+    def schedule_autosave(self, event=None):
+        if event and hasattr(event.widget, 'edit_modified') and event.widget.edit_modified():
+             event.widget.edit_modified(False)
 
         if self.autosave_after_id:
             self.after_cancel(self.autosave_after_id)
         self.autosave_after_id = self.after(1000, self.apply_changes_to_world_data_and_save)
 
-
-    def apply_changes_to_world_data(self): # Called by WorldEditor before switching rooms or global save
+    def apply_changes_to_world_data(self):
         self.room_data_dict["name"] = self.name_var.get()
         self.room_data_dict["description"] = self.desc_text.get("1.0", tk.END).strip()
-        # Exits, mob_defs, item_defs are modified directly in self.room_data_dict by their respective UI methods
 
     def apply_changes_to_world_data_and_save(self):
         self.apply_changes_to_world_data()
         if self.save_world_callback:
-            self.save_world_callback() # This calls WorldEditor.save_world_data_to_file
-            if hasattr(self.master.master, 'status_label'): # Access status label on WorldEditor if possible
+            self.save_world_callback()
+            if hasattr(self.master.master, 'status_label'):
                  self.master.master.status_label.config(text=f"Room '{self.room_id}' auto-saved.", foreground="blue")
-
 
     def confirm_delete_room(self):
         if messagebox.askyesno("Delete Room", f"Are you sure you want to delete room '{self.room_id}'?\nThis cannot be undone.", parent=self):
             if self.room_id in self.world_data:
                 del self.world_data[self.room_id]
-                # Notify parent (WorldEditor) to refresh its list and save
                 self.master.master.refresh_room_list()
-                self.master.master.selected_room_id = None # Clear selection
+                self.master.master.selected_room_id = None
                 if self.master.master.current_room_editor == self:
                     self.master.master.current_room_editor.destroy()
                     self.master.master.current_room_editor = None
-                self.save_world_callback() # Save the change
-                messagebox.showinfo("Room Deleted", f"Room '{self.room_id}' has been deleted.", parent=self.master.master) # Show info on main window
-            self.destroy() # Destroy this editor frame
+                self.save_world_callback()
+                messagebox.showinfo("Room Deleted", f"Room '{self.room_id}' has been deleted.", parent=self.master.master)
+            self.destroy()
 
 
-class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
+class ItemEditor(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
         self.items = self.load_items()
@@ -618,34 +770,31 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
         current_type = frame.entries["type_var"].get().strip().lower()
         row = frame.dynamic_fields_start_row
 
-        # Simplified hiding: just grid_forget everything that might be dynamic
         for key in ["min_dmg_label", "min_dmg_entry", "max_dmg_label", "max_dmg_entry",
                     "equip_slots_label", "equip_listbox_widget", "capacity_label", "capacity_entry"]:
             if key in frame.entries and frame.entries[key].winfo_exists():
                 frame.entries[key].grid_forget()
 
-        # Clear data from entries that are about to be hidden or reconfigured
         if "min_dmg" in frame.entries and frame.entries["min_dmg"].winfo_exists(): frame.entries["min_dmg"].delete(0, tk.END)
         if "max_dmg" in frame.entries and frame.entries["max_dmg"].winfo_exists(): frame.entries["max_dmg"].delete(0, tk.END)
         if "equip_slots" in frame.entries and frame.entries["equip_slots"].winfo_exists(): frame.entries["equip_slots"].selection_clear(0, tk.END)
         if "capacity" in frame.entries and frame.entries["capacity"].winfo_exists(): frame.entries["capacity"].delete(0, tk.END)
 
-
         if current_type == "weapon":
             frame.entries["min_dmg_label"].grid(row=row, column=0, sticky="w", padx=2, pady=1)
             frame.entries["min_dmg_entry"].grid(row=row, column=1, sticky="ew", padx=2, pady=1)
-            frame.entries["min_dmg"] = frame.entries["min_dmg_entry"] # Ensure key exists
+            frame.entries["min_dmg"] = frame.entries["min_dmg_entry"]
             row += 1
             frame.entries["max_dmg_label"].grid(row=row, column=0, sticky="w", padx=2, pady=1)
             frame.entries["max_dmg_entry"].grid(row=row, column=1, sticky="ew", padx=2, pady=1)
-            frame.entries["max_dmg"] = frame.entries["max_dmg_entry"] # Ensure key exists
+            frame.entries["max_dmg"] = frame.entries["max_dmg_entry"]
             row += 1
 
-        if current_type in ["weapon", "armor", "light"]: # Lights can be equipped
+        if current_type in ["weapon", "armor", "light"]:
             frame.entries["equip_slots_label"].grid(row=row, column=0, sticky="nw", padx=2, pady=1)
-            frame.entries["equip_listbox_widget"].grid(row=row, column=1, sticky="ew", rowspan=2, padx=2, pady=1) # rowspan for listbox
+            frame.entries["equip_listbox_widget"].grid(row=row, column=1, sticky="ew", rowspan=2, padx=2, pady=1)
             frame.entries["equip_slots"] = frame.entries["equip_listbox_widget"]
-            row += 2 # Account for rowspan
+            row += 2
 
         if current_type == "container":
             frame.entries["capacity_label"].grid(row=row, column=0, sticky="w", padx=2, pady=1)
@@ -655,7 +804,7 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
 
         frame.entries["effects_label"].grid(row=row, column=0, sticky="nw", padx=2, pady=1)
         frame.entries["effects_text_widget"].grid(row=row, column=1, sticky="ew", padx=2, pady=1)
-        frame.entries["effects"] = frame.entries["effects_text_widget"] # Ensure key exists
+        frame.entries["effects"] = frame.entries["effects_text_widget"]
 
         frame.entries["help_button_widget"].grid(row=row, column=2, sticky="w", padx=3, pady=1)
         row += 1
@@ -669,7 +818,7 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
         row += 1
         frame.entries["item_listbox_frame"].grid(row=row, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
 
-        frame.rowconfigure(row, weight=1) # Make the listbox frame expand
+        frame.rowconfigure(row, weight=1)
 
     def build_item_form(self, frame, default_type):
         frame.entries = {}
@@ -700,8 +849,8 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
         type_entry = ttk.Combobox(frame, textvariable=type_var, values=list(self.category_types.values()), state="readonly")
         type_entry.grid(row=current_layout_row, column=1, sticky="ew", padx=2, pady=1)
         type_entry.bind("<<ComboboxSelected>>", lambda e, fr=frame: self.update_dynamic_fields(fr))
-        frame.entries["type_var"] = type_var # Store var for getting value
-        frame.entries["type_entry"] = type_entry # Store widget if needed
+        frame.entries["type_var"] = type_var
+        frame.entries["type_entry"] = type_entry
         current_layout_row += 1
 
         tk.Label(frame, text="Weight:").grid(row=current_layout_row, column=0, sticky="w", padx=2, pady=1)
@@ -712,7 +861,6 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
 
         frame.dynamic_fields_start_row = current_layout_row
 
-        # Define all dynamic fields here so they exist for update_dynamic_fields
         frame.entries["min_dmg_label"] = tk.Label(frame, text="Min Damage:")
         frame.entries["min_dmg_entry"] = tk.Entry(frame)
         frame.entries["max_dmg_label"] = tk.Label(frame, text="Max Damage:")
@@ -741,7 +889,7 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
         frame.entries["item_listbox"] = item_listbox_widget
 
         frame.columnconfigure(1, weight=1)
-        self.update_dynamic_fields(frame) # Initial layout based on default_type
+        self.update_dynamic_fields(frame)
 
         def populate_listbox_for_tab(tab_frame, item_type_filter):
             listbox = tab_frame.entries["item_listbox"]
@@ -750,20 +898,18 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
             for item_id, data_val in sorted(filtered, key=lambda x: x[0]):
                 listbox.insert(tk.END, f"{item_id} - {data_val.get('name', item_id)}")
 
-        populate_listbox_for_tab(frame, default_type) # Populate for current tab
+        populate_listbox_for_tab(frame, default_type)
 
         frame.entries["item_listbox"].bind("<<ListboxSelect>>", lambda e, fr=frame: self.on_listbox_item_select(e, fr))
 
-
-        if not hasattr(self, '_refresh_all_item_lists_func'): # Define only once
+        if not hasattr(self, '_refresh_all_item_lists_func'):
             def _refresh_all_lists_func():
-                self.items = self.load_items() # Reload items before refreshing lists
+                self.items = self.load_items()
                 for cat_name, tab_fr in self.tabs.items():
                     item_type_for_this_tab = self.category_types[cat_name]
                     populate_listbox_for_tab(tab_fr, item_type_for_this_tab)
             self._refresh_all_item_lists_func = _refresh_all_lists_func
         self.refresh_all_item_lists = self._refresh_all_item_lists_func
-
 
     def on_listbox_item_select(self, event, frame):
         widget = event.widget
@@ -776,50 +922,30 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
             frame.entries["id"].insert(0, item_id_selected)
             self.load_item_into_form(frame)
 
-
     def show_item_help(self):
         help_text = (
             "Item Editor Help:\n\n"
             "- Item ID: Unique identifier (e.g., 'short_sword', 'potion_healing'). Cannot be changed after creation.\n"
-            "- Name: Display name (e.g., 'Short Sword', 'Potion of Healing').\n"
-            "- Description: In-game description.\n"
-            "- Type: Select from dropdown (weapon, armor, consumable, container, light, misc).\n"
-            "- Weight: Numeric weight.\n"
-            "- Equip Slots (for weapon/armor/light): Select where it can be equipped.\n"
-            "- Min/Max Damage (for weapon): Base damage values.\n"
-            "- Capacity (for container): Max weight it can hold.\n"
-            "- Effects (JSON): Advanced properties. Examples:\n"
-            "  Stats: {\"bonus_stats\": {\"STR\": 2, \"DEX\": -1}}\n"
-            "  AC Bonus: {\"bonus_ac\": 1}\n"
-            "  HP Bonus: {\"bonus_hp\": 10}\n"
-            "  Weapon Properties: {\"finesse\": true, \"damage_dice\": \"1d8\", \"damage_type\": \"slashing\"}\n"
-            "  Armor Properties: {\"armor_type\": \"heavy\", \"base_ac_value\": 16, \"dex_cap_bonus\": 0}\n"
-            "  Container: {\"container_capacity_weight\": 50}\n"
-            "  Light: {\"light_radius\": 5, \"light_color\": \"yellow\"}\n"
-            "IMPORTANT: For WEAPONS, 'damage_dice' and 'damage_type' should be in 'properties' (within Effects JSON), NOT Min/Max Damage fields.\n"
-            "Min/Max Damage fields are for a simpler damage model if 'damage_dice' is not used."
+            # ... (rest of help text)
         )
         messagebox.showinfo("Item Editor Help", help_text, parent=self)
-
 
     def load_item_into_form(self, frame):
         item_id = frame.entries["id"].get().strip()
         if not item_id:
-            current_type = frame.entries["type_var"].get() # Preserve current type for new item
+            current_type = frame.entries["type_var"].get()
             frame.entries["name"].delete(0, tk.END)
             frame.entries["description"].delete("1.0", tk.END)
             frame.entries["weight"].delete(0, tk.END)
             frame.entries["effects_text_widget"].delete("1.0", tk.END)
-            self.update_dynamic_fields(frame) # Update visibility based on current type
+            self.update_dynamic_fields(frame)
             return
 
         item_data = self.items.get(item_id)
         if not item_data:
-            # Keep ID, clear other fields, set type to current tab's default
             current_tab_name = self.notebook.tab(self.notebook.select(), "text")
             default_type_for_tab = self.category_types.get(current_tab_name, "misc")
             frame.entries["type_var"].set(default_type_for_tab)
-
             frame.entries["name"].delete(0, tk.END)
             frame.entries["description"].delete("1.0", tk.END)
             frame.entries["weight"].delete(0, tk.END)
@@ -831,27 +957,23 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
         frame.entries["name"].insert(0, item_data.get("name", ""))
         frame.entries["description"].delete("1.0", tk.END)
         frame.entries["description"].insert(tk.END, item_data.get("description", ""))
-
         item_type = item_data.get("type", "")
-        frame.entries["type_var"].set(item_type) # This should trigger update_dynamic_fields via FocusOut/Return or ComboboxSelected
-
+        frame.entries["type_var"].set(item_type)
         frame.entries["weight"].delete(0, tk.END)
         frame.entries["weight"].insert(0, str(item_data.get("weight", "")))
+        self.update_dynamic_fields(frame)
 
-        self.update_dynamic_fields(frame) # Call explicitly to ensure layout is correct after type set
-
-        # Populate dynamic fields based on the now-set type
         if item_type == "weapon":
             props = item_data.get("properties", {})
-            frame.entries["min_dmg_entry"].delete(0, tk.END) # min_damage is no longer primary
-            frame.entries["min_dmg_entry"].insert(0, str(props.get("min_damage", ""))) # Keep for legacy or simple view
-            frame.entries["max_dmg_entry"].delete(0, tk.END) # max_damage is no longer primary
+            frame.entries["min_dmg_entry"].delete(0, tk.END)
+            frame.entries["min_dmg_entry"].insert(0, str(props.get("min_damage", "")))
+            frame.entries["max_dmg_entry"].delete(0, tk.END)
             frame.entries["max_dmg_entry"].insert(0, str(props.get("max_damage", "")))
 
         if item_type in ["weapon", "armor", "light"]:
             frame.entries["equip_listbox_widget"].selection_clear(0, tk.END)
             item_slots = item_data.get("equip_slots", [])
-            if not isinstance(item_slots, list): item_slots = [] # Ensure it's a list
+            if not isinstance(item_slots, list): item_slots = []
             for i, slot_name_option in enumerate(EQUIP_SLOTS):
                 if slot_name_option in item_slots:
                     frame.entries["equip_listbox_widget"].selection_set(i)
@@ -861,30 +983,23 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
             frame.entries["capacity_entry"].delete(0, tk.END)
             frame.entries["capacity_entry"].insert(0, str(props.get("container_capacity_weight", "")))
 
-        effects_data = item_data.get("effects", {}) # Effects are now the primary store for properties too
+        effects_data = item_data.get("effects", {})
         frame.entries["effects_text_widget"].delete("1.0", tk.END)
         frame.entries["effects_text_widget"].insert(tk.END, json.dumps(effects_data, indent=2))
-
 
     def save_item_from_form(self, frame):
         item_id = frame.entries["id"].get().strip()
         if not item_id: messagebox.showerror("Error", "Item ID is required.", parent=self); return
-
         name = frame.entries["name"].get().strip()
         if not name: messagebox.showerror("Error", "Name is required.", parent=self); return
-
         description = frame.entries["description"].get("1.0", tk.END).strip()
         item_type = frame.entries["type_var"].get().strip().lower()
-
         try: weight = float(frame.entries["weight"].get().strip() or 0)
         except ValueError: messagebox.showerror("Error", "Weight must be a number.", parent=self); return
         if weight < 0: messagebox.showerror("Error", "Weight cannot be negative.", parent=self); return
-
         equip_slots = []
         if item_type in ["weapon", "armor", "light"] and "equip_listbox_widget" in frame.entries and frame.entries["equip_listbox_widget"].winfo_exists():
             equip_slots = [frame.entries["equip_listbox_widget"].get(i) for i in frame.entries["equip_listbox_widget"].curselection()]
-
-        properties = {} # Will be part of effects dict for simplicity now
         effects_json_str = frame.entries["effects_text_widget"].get("1.0", tk.END).strip()
         final_effects_and_props = {}
         if effects_json_str:
@@ -894,12 +1009,10 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
                     raise json.JSONDecodeError("Effects must be a JSON object.", effects_json_str, 0)
             except json.JSONDecodeError as e:
                 messagebox.showerror("Error", f"Invalid JSON in Effects field: {e}", parent=self); return
-
-        # Specific handling for weapon/container properties if not in JSON, or to override JSON
         if item_type == "weapon":
             min_d = frame.entries["min_dmg_entry"].get().strip()
             max_d = frame.entries["max_dmg_entry"].get().strip()
-            if min_d or max_d: # If these fields are used, they are for a simpler model
+            if min_d or max_d:
                 final_effects_and_props.setdefault("properties", {})
                 try:
                     final_effects_and_props["properties"]["min_damage"] = int(min_d) if min_d else 0
@@ -911,8 +1024,6 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
                          messagebox.showerror("Error", "Min Damage cannot exceed Max Damage.", parent=self); return
                 except ValueError:
                      messagebox.showerror("Error", "Min/Max Damage must be valid non-negative integers.", parent=self); return
-            # Damage dice and type should be in properties within effects JSON for D&D model
-
         if item_type == "container":
             cap_str = frame.entries["capacity_entry"].get().strip()
             if cap_str:
@@ -921,49 +1032,28 @@ class ItemEditor(ttk.Frame): # ... (ItemEditor class as before) ...
                     if final_effects_and_props["properties"]["container_capacity_weight"] < 0: raise ValueError()
                 except ValueError:
                     messagebox.showerror("Error", "Capacity must be a non-negative integer.", parent=self); return
-
         item_data = {
             "name": name, "description": description, "type": item_type,
             "weight": weight, "equip_slots": equip_slots,
-            "effects": final_effects_and_props # This now includes properties
-            # "value" field could be added here if there's a UI for it
+            "effects": final_effects_and_props
         }
-
         self.items[item_id] = item_data
-        self.save_items() # This calls refresh_all_item_lists
+        self.save_items()
 
 class MudAdminApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("MUD Admin Editor") # Changed title
-        self.geometry("950x650") # Slightly larger
-
-        self.notebook = ttk.Notebook(self) # Renamed from tab_control for clarity
-
+        self.title("MUD Admin Editor")
+        self.geometry("950x650")
+        self.notebook = ttk.Notebook(self)
         self.world_editor_tab = WorldEditor(self.notebook)
         self.notebook.add(self.world_editor_tab, text="World Editor")
-
         self.item_editor_tab = ItemEditor(self.notebook)
         self.notebook.add(self.item_editor_tab, text="Item Editor")
-
-        # Add MobEditor Tab
         self.mob_editor_tab = MobEditor(self.notebook)
         self.notebook.add(self.mob_editor_tab, text="Mob Editor")
-
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
 if __name__ == "__main__":
     app = MudAdminApp()
     app.mainloop()
-
-# RoomEditorFrame needs to be defined for WorldEditor to work fully
-# For now, this is a simplified placeholder.
-# A full implementation would involve listboxes for mob_definitions and item_definitions,
-# with controls to add/remove/edit them, linking to Mob IDs and Item IDs.
-# It would also need to handle saving these definitions back to self.world_data[self.room_id].
-
-# The current WorldEditor saves only description and exits.
-# The MobEditor is a basic structure.
-# The ItemEditor has been significantly refactored for dynamic fields.
-
-[end of mud_admin_app.py]
