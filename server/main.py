@@ -343,21 +343,26 @@ def handle_client(conn, addr):
         print("[DEBUG_HANDLE_CLIENT] Sending 'Welcome to the MUD!'")
         temp_user_for_player.send_message("\r\nWelcome to the MUD!")
         if player_instance.room:
-            print(f"[DEBUG_HANDLE_CLIENT] Sending initial room display for {player_instance.room.name}")
-            temp_user_for_player.send_message(player_instance.room.display())
+            print(f"[DIAGNOSTIC_LOG] Attempting to display room. ID: '{player_instance.room.id}', Name: '{player_instance.room.name}'")
+            room_display_content = player_instance.room.display()
+            print(f"[DIAGNOSTIC_LOG] Content from player_instance.room.display():\n{room_display_content}")
+            temp_user_for_player.send_message(room_display_content) # Send room display
+            print(f"[DIAGNOSTIC_LOG] Attempted to send room display to client.")
         else:
             print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.")
             temp_user_for_player.send_message("You are in a featureless void. (Error: Room not found)")
+            print(f"[DIAGNOSTIC_LOG] Player has no room. Sent 'featureless void' message.")
 
         socket_timeout = conn.gettimeout()
         print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}")
-        print(f"[DEBUG_HANDLE_CLIENT] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}")
+
+        print(f"[DIAGNOSTIC_LOG] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}. About to send first prompt and wait for command.")
         while player_instance.is_alive():
             player_instance.reset_turn_actions()
             # print(f"[DEBUG_HANDLE_CLIENT] Top of command loop. Player action reset. Prompting...")
             temp_user_for_player.send_message("\r\n> ")
             msg = temp_user_for_player.read_line()
-            print(f"[DEBUG_HANDLE_CLIENT] Received from client: '{msg}'")
+            print(f"[DEBUG_HANDLE_CLIENT] Received from client: '{msg}'") # This existing log is good.
             if msg is None:
                 print("[DEBUG_HANDLE_CLIENT] msg is None, breaking command loop.")
                 break
