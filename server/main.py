@@ -349,12 +349,12 @@ def handle_client(conn, addr):
             temp_user_for_player.send_message(room_display_content) # Send room display
             print(f"[DIAGNOSTIC_LOG] Attempted to send room display to client.")
         else:
-            print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.")
+            print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.") # Kept original debug log
             temp_user_for_player.send_message("You are in a featureless void. (Error: Room not found)")
             print(f"[DIAGNOSTIC_LOG] Player has no room. Sent 'featureless void' message.")
 
         socket_timeout = conn.gettimeout()
-        print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}")
+        print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}") # Kept original debug log
 
         print(f"[DIAGNOSTIC_LOG] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}. About to send first prompt and wait for command.")
         while player_instance.is_alive():
