@@ -205,25 +205,79 @@ def handle_client(conn, addr):
         print(f"[DEBUG_HANDLE_CLIENT] Preparing Player: name='{player_name}', class='{player_class_name}', race='{player_race_name}', base_stats='{player_base_stats}'")
 
         class TempUser:
-            def __init__(self, c, u): self.connection=c; self.username=u
+            def __init__(self, c, u):
+                self.connection = c
+                self.username = u
+                self._recv_buffer = b"" # Buffer for incomplete lines
+                self.MAX_BUFFER_SIZE = 4096
+
+
             def send_message(self, msg):
                 print(f"[DEBUG_HANDLE_CLIENT] TempUser sending to {self.username}: '{msg[:100].replace('\r\n', ' ')}...'") # Log snippet
                 if self.connection:
-                    try: self.connection.sendall(msg.encode()+b"\r\n")
-                    except Exception as e_send: print(f"[DEBUG_HANDLE_CLIENT] TempUser send_message EXCEPTION: {e_send}")
-            def read_line(self):
-                if self.connection:
                     try:
-                        raw=self.connection.recv(1024)
-                        # print(f"[DEBUG_HANDLE_CLIENT] TempUser raw recv: {raw}")
-                        return raw.decode().strip() if raw else None
-                    except socket.timeout: # Expected if client is idle
-                        # print("[DEBUG_HANDLE_CLIENT] TempUser read_line: socket timeout")
-                        return "" # Return empty string on timeout, not None, to keep loop alive if desired
+                        self.connection.sendall(msg.encode() + b"\r\n")
+                    except Exception as e_send:
+                        print(f"[DEBUG_HANDLE_CLIENT] TempUser send_message EXCEPTION: {e_send}")
+
+            def read_line(self):
+                if not self.connection:
+                    return None
+
+                # Check buffer for existing complete line
+                try:
+                    if b"\n" in self._recv_buffer:
+                        line, self._recv_buffer = self._recv_buffer.split(b"\n", 1)
+                        return line.decode(errors='ignore').strip()
+                    if b"\r" in self._recv_buffer: # Handle old Mac OS or Telnet \r
+                        line, self._recv_buffer = self._recv_buffer.split(b"\r", 1)
+                        # If \r\n follows, next read might get just \n, strip() handles it.
+                        return line.decode(errors='ignore').strip()
+                except Exception as e_decode_buffer: # Should be rare with errors='ignore'
+                     print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line (buffer decode) EXCEPTION: {e_decode_buffer}")
+                     self._recv_buffer = b"" # Clear potentially corrupt buffer
+
+                # Read from socket if no complete line in buffer
+                while True:
+                    try:
+                        data = self.connection.recv(1024)
+                        if not data:  # Connection closed by client
+                            # If there's anything left in buffer, try to process it as a final line
+                            if self._recv_buffer:
+                                line = self._recv_buffer
+                                self._recv_buffer = b""
+                                return line.decode(errors='ignore').strip()
+                            return None
+
+                        self._recv_buffer += data
+
+                        if len(self._recv_buffer) > self.MAX_BUFFER_SIZE:
+                            print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line: Buffer overflow for {self.username}. Clearing buffer.")
+                            self._recv_buffer = b"" # Clear buffer to prevent infinite loop on massive line
+                            # Potentially return None or raise an error to disconnect user
+                            return None # Or "" to keep trying, but None is safer for overflow
+
+                        if b"\n" in self._recv_buffer:
+                            line, self._recv_buffer = self._recv_buffer.split(b"\n", 1)
+                            return line.decode(errors='ignore').strip()
+                        if b"\r" in self._recv_buffer: # Check for \r separately
+                            line, self._recv_buffer = self._recv_buffer.split(b"\r", 1)
+                            return line.decode(errors='ignore').strip()
+
+                    except socket.timeout:
+                        # If there's anything in the buffer, even without a newline,
+                        # and a timeout occurs, some MUDs might process it.
+                        # For now, returning "" maintains previous behavior for timeouts.
+                        # If buffer has data, it will be checked on next non-timeout read.
+                        return ""
                     except Exception as e_recv:
-                        print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line EXCEPTION: {e_recv}")
+                        print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line (socket recv) EXCEPTION: {e_recv}")
+                        # If there's anything left in buffer, try to process it
+                        if self._recv_buffer:
+                            line = self._recv_buffer
+                            self._recv_buffer = b""
+                            return line.decode(errors='ignore').strip()
                         return None
-                return None
 
         temp_user_for_player = TempUser(conn, username)
 
@@ -295,7 +349,8 @@ def handle_client(conn, addr):
             print("[DEBUG_HANDLE_CLIENT] Player has no room, not sending room display.")
             temp_user_for_player.send_message("You are in a featureless void. (Error: Room not found)")
 
-
+        socket_timeout = conn.gettimeout()
+        print(f"[DEBUG_HANDLE_CLIENT] Socket timeout for {username}: {socket_timeout}")
         print(f"[DEBUG_HANDLE_CLIENT] Entering command loop for {player_instance.name}. HP: {player_instance.current_hp}")
         while player_instance.is_alive():
             player_instance.reset_turn_actions()
