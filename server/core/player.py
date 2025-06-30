@@ -1,6 +1,7 @@
 import json
 import math # For floor
 import traceback # For detailed exception logging
+import random # For death messages
 from server.core.combat import roll_dice
 
 # Globals populated by load_game_data()
@@ -78,6 +79,7 @@ class Player:
 
         self.in_combat = False
         self.target = None
+        self.is_dead = False # New attribute for death state
 
         try:
             if not (CLASSES_DATA and RACES_DATA): load_game_data()
@@ -563,9 +565,70 @@ class Player:
             self.handle_death(attacker)
 
     def handle_death(self, killer=None):
+        if self.is_dead: # Already processed death
+            return
+
+        self.is_dead = True
+        self.current_hp = 0 # Ensure HP is 0
         self.in_combat = False
-        self.target = None
-        print(f"[INFO] Player {self.name} has died (killed by {killer.name if killer else 'unknown causes'}).")
+
+        # Clear target from the mob's perspective if the mob was targeting this player
+        if self.target and hasattr(self.target, 'target') and self.target.target == self:
+            self.target.target = None
+            self.target.in_combat = False # Mob should leave combat if its target dies
+
+        self.target = None # Clear player's target
+
+        killer_name = "unknown causes"
+        if killer:
+            killer_name = killer.name if hasattr(killer, 'name') else str(killer)
+
+        print(f"[INFO] Player {self.name} has died (killed by {killer_name}).")
+
+        death_messages = [
+            f"{ANSI_RED}Darkness envelops you as your life force fades away... You have been slain by {killer_name}.{ANSI_RESET}",
+            f"{ANSI_RED}A final, ragged breath escapes your lips. {killer_name} stands victorious over your fallen form.{ANSI_RESET}",
+            f"{ANSI_RED}Your vision blurs and the world spins... {killer_name}'s blow was fatal.{ANSI_RESET}",
+            f"{ANSI_RED}You have fallen in battle, your spirit torn from its mortal shell by {killer_name}.{ANSI_RESET}",
+            f"{ANSI_RED}The cold grip of death takes you. Your journey ends here, thanks to {killer_name}.{ANSI_RESET}"
+        ]
+        message_to_send = random.choice(death_messages)
+        if hasattr(self.user, 'send_message'):
+            self.user.send_message(message_to_send)
+            self.user.send_message(f"{ANSI_YELLOW}Your soul lingers. Type 'respawn' to return to the Church of Testing, or 'quit' to embrace the void.{ANSI_RESET}")
+
+    def attempt_respawn(self):
+        if not self.is_dead:
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message("You are already among the living!")
+            return False
+
+        if hasattr(self.user, 'send_message'):
+            self.user.send_message(f"{ANSI_YELLOW}You feel a pull back to the mortal coil. Do you wish to respawn at the Church of Testing? (yes/no){ANSI_RESET}")
+
+        response = None
+        if hasattr(self.user, 'read_line'):
+            response = self.user.read_line() # This assumes TempUser has read_line
+
+        if response and response.strip().lower() == "yes":
+            self.is_dead = False
+            self.current_hp = max(1, self.max_hp // 4)
+            self.room_id = "start" # Respawn to the starting room (Church of Testing)
+            self.in_combat = False # Explicitly clear combat state on respawn
+            self.target = None     # Explicitly clear target on respawn
+
+            resurrection_messages = [
+                f"{ANSI_GREEN}A divine light envelops you, and you feel warmth return to your limbs! You find yourself in a holy place.{ANSI_RESET}",
+                f"{ANSI_GREEN}You gasp as life surges back into your form, the spectral cold receding. You are alive!{ANSI_RESET}",
+                f"{ANSI_GREEN}With a shudder, your spirit reattaches to your form. You awaken, weakened but alive, in the Church of Testing.{ANSI_RESET}"
+            ]
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(random.choice(resurrection_messages))
+            return True
+        else:
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_YELLOW}You decide to linger in the spirit world a while longer.{ANSI_RESET}")
+            return False
 
     def add_item_to_inventory(self, item_instance_or_dict):
         self.inventory.append(item_instance_or_dict)
