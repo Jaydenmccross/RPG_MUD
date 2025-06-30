@@ -19,7 +19,7 @@ mobs_blueprints = {}
 ACTIVE_COMBATANTS = []
 combat_lock = threading.Lock()
 CONNECTED_PLAYERS = []
-players_lock = threading.Lock()
+players_lock = threading.RLock() # Changed to RLock
 CURRENT_GAME_ROUND = 0
 
 def add_to_active_combat(entity):
