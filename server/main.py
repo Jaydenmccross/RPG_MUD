@@ -179,27 +179,58 @@ def game_tick():
 
                     if isinstance(entity, MobInstance):
                         entity.tick_status_effects(CURRENT_GAME_ROUND) # Tick mob effects
-                        if entity.target and entity.target.is_alive() and (not hasattr(entity.target, 'is_dead') or not entity.target.is_dead) and entity.in_combat:
+                        target_is_invalid = False
+                        if not entity.target:
+                            target_is_invalid = True
+                        elif not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead):
+                            target_is_invalid = True
+                        elif isinstance(entity.target, Player) and (entity.target not in CONNECTED_PLAYERS or entity.target.user.connection is None):
+                            print(f"[GAME_TICK_COMBAT] Mob {entity.name}'s target player {entity.target.name} is no longer connected or valid.")
+                            target_is_invalid = True
+
+                        if target_is_invalid:
+                            entity.target = None
+                            entity.in_combat = False
+                            combatants_to_remove_after_processing.append(entity)
+                            # No continue here, let it fall through to general entity removal if needed
+
+                        # Proceed with attack only if target is still valid and mob is in combat
+                        if entity.in_combat and entity.target and entity.target.is_alive() and \
+                           (not hasattr(entity.target, 'is_dead') or not entity.target.is_dead):
                             attack_messages = resolve_attack(entity, entity.target)
-                            # Send attack messages to target player and others in room
                             if hasattr(entity.target.user, 'send_message'):
                                 for line in attack_messages: entity.target.user.send_message(line)
-                            if entity.target.room: # Check if target has a room
+                            if entity.target.room:
                                 for other_player in get_players_in_room(entity.target.room.id):
                                     if other_player != entity.target and hasattr(other_player.user, 'send_message'):
                                         for line in attack_messages: other_player.user.send_message(line)
 
-                            if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead): # If target died
-                                entity.target = None; entity.in_combat = False
-                                combatants_to_remove_after_processing.append(entity.target) # Target (player)
-                                combatants_to_remove_after_processing.append(entity)      # Mob itself
-                        elif not entity.target or not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead): # Target invalid or dead
-                            entity.target = None; entity.in_combat = False
+                            if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead): # Target died
+                                print(f"[GAME_TICK_COMBAT] Target {entity.target.name} died after attack from {entity.name}.")
+                                combatants_to_remove_after_processing.append(entity.target)
+                                entity.target = None
+                                entity.in_combat = False # Mob leaves combat as its target is dead
+                                combatants_to_remove_after_processing.append(entity) # Mob also removed as it's no longer in combat
+                        elif entity.in_combat: # Target became invalid before attack could happen this tick
+                            print(f"[GAME_TICK_COMBAT] Mob {entity.name} was in combat, but target became invalid before attack. Removing from combat.")
+                            entity.target = None
+                            entity.in_combat = False
                             combatants_to_remove_after_processing.append(entity)
 
-                    elif isinstance(entity, Player): # Player's turn/check (currently no player auto-attack in tick)
-                        if not entity.target or not entity.target.is_alive() or not entity.in_combat:
-                             entity.target = None; entity.in_combat = False
+                    elif isinstance(entity, Player):
+                        target_is_invalid = False
+                        if not entity.target:
+                            target_is_invalid = True
+                        elif not entity.target.is_alive(): # Mobs don't have 'is_dead'
+                            target_is_invalid = True
+                        # No need to check if mob target is in CONNECTED_PLAYERS
+
+                        if target_is_invalid and entity.in_combat: # Player was in combat but target is now invalid
+                            print(f"[GAME_TICK_COMBAT] Player {entity.name}'s target is invalid. Removing player from combat.")
+                            entity.target = None
+                            entity.in_combat = False
+                            combatants_to_remove_after_processing.append(entity)
+                        elif not entity.in_combat and entity in ACTIVE_COMBATANTS: # Player somehow not in_combat but in list
                              combatants_to_remove_after_processing.append(entity)
 
             for entity_to_remove in set(combatants_to_remove_after_processing): # Use set to avoid duplicates
@@ -694,6 +725,13 @@ def handle_client(conn, addr):
                         if player_instance.room_id not in world:
                             player_instance.room_id = "start"
                         player_instance.room = world.get(player_instance.room_id, world.get("start"))
+
+                    # Explicitly clear combat state after reload operations
+                    player_instance.in_combat = False
+                    player_instance.target = None
+                    remove_from_active_combat(player_instance) # Ensure they are not lingering in the combat list
+                    print(f"[DEBUG_RELOAD] Cleared combat state for {player_instance.name} after reload command.")
+
                         temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
                         if player_instance.room:
                             temp_user_for_player.send_message(player_instance.room.display())
