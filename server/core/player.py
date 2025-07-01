@@ -80,6 +80,7 @@ class Player:
         self.in_combat = False
         self.target = None
         self.is_dead = False # New attribute for death state
+        self.is_reloading = False # Flag for when player is using reload command
 
         try:
             if not (CLASSES_DATA and RACES_DATA): load_game_data()

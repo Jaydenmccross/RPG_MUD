@@ -44,7 +44,7 @@ def add_connected_player(player_instance):
                 print(f"[ADD_PLAYER_DIAG] {player_name_for_log} already in CONNECTED_PLAYERS.")
     except Exception as e_add_player:
         print(f"!!! ERROR in add_connected_player for {player_name_for_log} !!!")
-        print(traceback.format_exc()) # Assumes traceback is imported globally
+        print(traceback.format_exc())
     print(f"[ADD_PLAYER_DIAG] Exiting add_connected_player for {player_name_for_log}")
 
 def remove_connected_player(player_instance):
@@ -55,10 +55,11 @@ def get_players_in_room(room_id_to_check):
     players_found = []
     with players_lock:
         for player in CONNECTED_PLAYERS:
-            # player.is_alive() check is important for many room interactions
-            # but for just listing who is in a room (even dead), we might omit it.
-            # For now, keeping it to only list alive players for things like mob aggression.
-            if player.room and player.room.id == room_id_to_check and player.is_alive() and not player.is_dead:
+            if player.room and \
+               player.room.id == room_id_to_check and \
+               player.is_alive() and \
+               not player.is_dead and \
+               not (hasattr(player, 'is_reloading') and player.is_reloading): # Check is_reloading
                 players_found.append(player)
     return players_found
 
@@ -68,7 +69,6 @@ COMMAND_ALIASES = {
     "eq":"equip","wear":"equip","wield":"equip","rem":"remove","unequip":"remove",
     "i":"inventory","inv":"inventory","k":"kill","attack":"kill","g":"get","take":"get",
     "secondwind": "secondwind", "rest": "rest", "dash": "dash", "cast": "cast"
-    # "respawn" will be handled in the dead loop, not aliased here.
 }
 DIRECTIONS = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","ne":"northeast","northeast":"northeast","nw":"northwest","northwest":"northwest","se":"southeast","southeast":"southeast","sw":"southwest","southwest":"southwest","u":"up","up":"up","d":"down","down":"down"}
 USER_FRIENDLY_SLOT_MAP = {
@@ -90,6 +90,10 @@ USER_FRIENDLY_SLOT_MAP = {
 }
 
 def load_world_and_game_data():
+    print(f"\n{'='*20} load_world_and_game_data() CALLED {'='*20}")
+    # import traceback # Already imported at top of file
+    traceback.print_stack()
+    print(f"{'='*50}\n")
     global world, mobs_blueprints
     core_load_game_data()
     try: world = Room.load_rooms("server/data/world.json")
@@ -146,13 +150,13 @@ def game_tick():
 
         with players_lock, combat_lock:
             for room_id, room in world.items():
-                players_in_room = get_players_in_room(room_id) # Gets only alive, non-dead players
+                players_in_room = get_players_in_room(room_id)
                 if not players_in_room: continue
-                for mob_instance in list(room.mob_instances): # Iterate copy for safe removal
+                for mob_instance in list(room.mob_instances):
                     if mob_instance.is_alive() and mob_instance.is_aggressive and not mob_instance.in_combat:
                         potential_target = None
-                        for p in players_in_room: # Already filtered for alive/not dead
-                            if p.is_alive(): # Double check, good practice
+                        for p in players_in_room:
+                            if p.is_alive():
                                 potential_target = p; break
                         if potential_target:
                             mob_instance.target = potential_target; mob_instance.in_combat = True
@@ -162,23 +166,23 @@ def game_tick():
                             add_to_active_combat(mob_instance); add_to_active_combat(potential_target)
                             if hasattr(potential_target.user, 'send_message'):
                                 potential_target.user.send_message(f"{ANSI_RED}{mob_instance.name} suddenly attacks you!{ANSI_RESET}")
-                            for p_other in players_in_room: # Notify others in room
+                            for p_other in players_in_room:
                                 if p_other != potential_target and hasattr(p_other.user, 'send_message'):
                                     p_other.user.send_message(f"{mob_instance.name} attacks {potential_target.name}!")
 
         combatants_to_remove_after_processing = []
-        with combat_lock: # Ensure combat_lock is acquired for ACTIVE_COMBATANTS modification
+        with combat_lock:
             if ACTIVE_COMBATANTS:
-                for entity in list(ACTIVE_COMBATANTS): # Iterate copy
-                    if not entity.is_alive() or (hasattr(entity, 'is_dead') and entity.is_dead): # Check is_dead for players
+                for entity in list(ACTIVE_COMBATANTS):
+                    if not entity.is_alive() or (hasattr(entity, 'is_dead') and entity.is_dead):
                         combatants_to_remove_after_processing.append(entity)
                         if entity.target and hasattr(entity.target, 'target') and entity.target.target == entity:
                             entity.target.target = None
                             if hasattr(entity.target, 'in_combat'): entity.target.in_combat = False
-                        continue # Skip further processing for dead/removed entities
+                        continue
 
                     if isinstance(entity, MobInstance):
-                        entity.tick_status_effects(CURRENT_GAME_ROUND) # Tick mob effects
+                        entity.tick_status_effects(CURRENT_GAME_ROUND)
                         target_is_invalid = False
                         if not entity.target:
                             target_is_invalid = True
@@ -192,10 +196,8 @@ def game_tick():
                             entity.target = None
                             entity.in_combat = False
                             combatants_to_remove_after_processing.append(entity)
-                            # No continue here, let it fall through to general entity removal if needed
 
-                        # Proceed with attack only if target is still valid and mob is in combat
-                        if entity.in_combat and entity.target and entity.target.is_alive() and \
+                        elif entity.in_combat and entity.target and entity.target.is_alive() and \
                            (not hasattr(entity.target, 'is_dead') or not entity.target.is_dead):
                             attack_messages = resolve_attack(entity, entity.target)
                             if hasattr(entity.target.user, 'send_message'):
@@ -205,13 +207,13 @@ def game_tick():
                                     if other_player != entity.target and hasattr(other_player.user, 'send_message'):
                                         for line in attack_messages: other_player.user.send_message(line)
 
-                            if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead): # Target died
+                            if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead):
                                 print(f"[GAME_TICK_COMBAT] Target {entity.target.name} died after attack from {entity.name}.")
                                 combatants_to_remove_after_processing.append(entity.target)
                                 entity.target = None
-                                entity.in_combat = False # Mob leaves combat as its target is dead
-                                combatants_to_remove_after_processing.append(entity) # Mob also removed as it's no longer in combat
-                        elif entity.in_combat: # Target became invalid before attack could happen this tick
+                                entity.in_combat = False
+                                combatants_to_remove_after_processing.append(entity)
+                        elif entity.in_combat:
                             print(f"[GAME_TICK_COMBAT] Mob {entity.name} was in combat, but target became invalid before attack. Removing from combat.")
                             entity.target = None
                             entity.in_combat = False
@@ -221,38 +223,33 @@ def game_tick():
                         target_is_invalid = False
                         if not entity.target:
                             target_is_invalid = True
-                        elif not entity.target.is_alive(): # Mobs don't have 'is_dead'
+                        elif not entity.target.is_alive():
                             target_is_invalid = True
-                        # No need to check if mob target is in CONNECTED_PLAYERS
 
-                        if target_is_invalid and entity.in_combat: # Player was in combat but target is now invalid
+                        if target_is_invalid and entity.in_combat:
                             print(f"[GAME_TICK_COMBAT] Player {entity.name}'s target is invalid. Removing player from combat.")
                             entity.target = None
                             entity.in_combat = False
                             combatants_to_remove_after_processing.append(entity)
-                        elif not entity.in_combat and entity in ACTIVE_COMBATANTS: # Player somehow not in_combat but in list
+                        elif not entity.in_combat and entity in ACTIVE_COMBATANTS:
                              combatants_to_remove_after_processing.append(entity)
 
-            for entity_to_remove in set(combatants_to_remove_after_processing): # Use set to avoid duplicates
+            for entity_to_remove in set(combatants_to_remove_after_processing):
                 remove_from_active_combat(entity_to_remove)
-                # If the removed entity was a mob and had a player target, clear that player's target if it was this mob
                 if isinstance(entity_to_remove, MobInstance) and entity_to_remove.target and isinstance(entity_to_remove.target, Player):
                     if entity_to_remove.target.target == entity_to_remove:
                         entity_to_remove.target.target = None
-                        entity_to_remove.target.in_combat = False # Player might leave combat
-                        # Check if player has any other aggressors before removing them from ACTIVE_COMBATANTS
+                        entity_to_remove.target.in_combat = False
                         still_targeted = False
                         for combatant in ACTIVE_COMBATANTS:
                             if combatant != entity_to_remove and hasattr(combatant, 'target') and combatant.target == entity_to_remove.target:
                                 still_targeted = True
                                 break
                         if not still_targeted:
-                             combatants_to_remove_after_processing.append(entity_to_remove.target) # Add player to removal if no other mobs target them
+                             combatants_to_remove_after_processing.append(entity_to_remove.target)
 
-            # Second pass for players who might have been added to removal list above
             for entity_to_remove in set(combatants_to_remove_after_processing):
                  remove_from_active_combat(entity_to_remove)
-
 
     except Exception as e:print(f"[ERROR] Exception in game_tick: {e}");import traceback;traceback.print_exc()
 
@@ -286,13 +283,12 @@ def handle_client(conn, addr):
                 self.MAX_BUFFER_SIZE = 4096
 
             def send_message(self, msg):
-                # print(f"[DEBUG_HANDLE_CLIENT] TempUser sending to {self.username}: '{msg[:100].replace('\r\n', ' ')}...'")
                 if self.connection:
                     try:
                         self.connection.sendall(msg.encode() + b"\r\n")
                     except Exception as e_send:
                         print(f"[DEBUG_HANDLE_CLIENT] TempUser send_message EXCEPTION: {e_send}")
-                        self.connection = None # Mark connection as unusable
+                        self.connection = None
 
             def read_line(self):
                 if not self.connection:
@@ -311,7 +307,7 @@ def handle_client(conn, addr):
                     try:
                         data = self.connection.recv(1024)
                         if not data:
-                            self.connection = None # Mark connection as closed
+                            self.connection = None
                             if self._recv_buffer:
                                 line = self._recv_buffer
                                 self._recv_buffer = b""
@@ -321,7 +317,7 @@ def handle_client(conn, addr):
                         if len(self._recv_buffer) > self.MAX_BUFFER_SIZE:
                             print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line: Buffer overflow for {self.username}. Clearing buffer.")
                             self._recv_buffer = b""
-                            self.connection = None # Consider overflow a connection error
+                            self.connection = None
                             return None
                         if b"\n" in self._recv_buffer:
                             line, self._recv_buffer = self._recv_buffer.split(b"\n", 1)
@@ -333,7 +329,7 @@ def handle_client(conn, addr):
                         return ""
                     except Exception as e_recv:
                         print(f"[DEBUG_HANDLE_CLIENT] TempUser read_line (socket recv) EXCEPTION: {e_recv}")
-                        self.connection = None # Mark as unusable on other errors too
+                        self.connection = None
                         if self._recv_buffer:
                             line = self._recv_buffer
                             self._recv_buffer = b""
@@ -371,8 +367,16 @@ def handle_client(conn, addr):
             else:
                 player_instance.is_dead = False
 
+            # Explicitly reset combat state for all logins to ensure a clean slate
+            player_instance.in_combat = False
+            player_instance.target = None
+            # If player was in ACTIVE_COMBATANTS from a previous session (unlikely but possible if server didn't clear), remove them.
+            if player_instance in ACTIVE_COMBATANTS:
+                remove_from_active_combat(player_instance)
+
+
             player_instance.used_abilities_this_rest = set(user_data.get("used_abilities_this_rest", []))
-            print(f"[DEBUG_HANDLE_CLIENT] Player stats set: Level={player_instance.level}, HP={player_instance.current_hp}/{player_instance.max_hp}, Dead: {player_instance.is_dead}")
+            print(f"[DEBUG_HANDLE_CLIENT] Player stats set: Level={player_instance.level}, HP={player_instance.current_hp}/{player_instance.max_hp}, Dead: {player_instance.is_dead}, Combat: {player_instance.in_combat}")
 
             player_instance.room_id = user_data.get("current_room_id", "start")
             print(f"[DEBUG_HANDLE_CLIENT] Player initial room_id: {player_instance.room_id}")
@@ -449,11 +453,9 @@ def handle_client(conn, addr):
                 break
 
             if player_instance.is_alive() and not player_instance.is_dead:
-                # print(f"[DIAGNOSTIC_LOG] Entering ALIVE command loop for {player_instance.name}. HP: {player_instance.current_hp}.")
                 player_instance.reset_turn_actions()
                 temp_user_for_player.send_message("\r\n> ")
                 msg = temp_user_for_player.read_line()
-                # print(f"[DEBUG_HANDLE_CLIENT] Received from client (Alive): '{msg}'")
                 if msg is None:
                     print("[DEBUG_HANDLE_CLIENT] msg is None in alive loop, breaking.")
                     connection_active = False
@@ -465,11 +467,9 @@ def handle_client(conn, addr):
 
                 parts = stripped_msg.split(); command_word = parts[0].lower(); args = parts[1:]
                 command_word = COMMAND_ALIASES.get(command_word, command_word)
-                # print(f"[DEBUG_HANDLE_CLIENT] Processing command: '{command_word}' with args: {args}")
                 responded = False
 
                 if command_word in DIRECTIONS and not args:
-                    # print("[DEBUG_HANDLE_CLIENT] Matched directional command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif player_instance.in_combat:
@@ -487,7 +487,6 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message("You can't go that way.")
                     responded = True
                 elif command_word == "go":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'go' command.")
                     if player_instance.has_taken_action_this_turn:
                          temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif player_instance.in_combat:
@@ -506,19 +505,16 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message(f"Unknown direction: '{direction_input}'.")
                     responded = True
                 elif command_word == "look":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'look' command.")
                     if not args:
                         if player_instance.room: temp_user_for_player.send_message(player_instance.room.display())
                         else: temp_user_for_player.send_message("You are in a void. There is nothing to see.")
                     else: temp_user_for_player.send_message(f"You look at {' '.join(args)} closely.")
                     responded = True
                 elif command_word == "sheet":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'sheet' command.")
                     if not args: temp_user_for_player.send_message(player_instance.display_sheet())
                     else: temp_user_for_player.send_message("Usage: sheet")
                     responded = True
                 elif command_word == "equip":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'equip' command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif not args: temp_user_for_player.send_message("Equip what?")
@@ -531,7 +527,6 @@ def handle_client(conn, addr):
                             player_instance.has_taken_action_this_turn = True
                     responded = True
                 elif command_word == "remove":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'remove' command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif not args: temp_user_for_player.send_message("Remove what?")
@@ -547,12 +542,10 @@ def handle_client(conn, addr):
                                 player_instance.has_taken_action_this_turn = True
                     responded = True
                 elif command_word == "inventory":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'inventory' command.")
                     if not args: temp_user_for_player.send_message(player_instance.display_inventory())
                     else: temp_user_for_player.send_message("Just type 'inventory' or 'i'.")
                     responded = True
                 elif command_word == "get":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'get' command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif not args: temp_user_for_player.send_message("Get what?")
@@ -567,7 +560,6 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message(f"You see no '{item_name_to_get}' here.")
                     responded = True
                 elif command_word == "drop":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'drop' command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif not args: temp_user_for_player.send_message("Drop what?")
@@ -584,7 +576,6 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message(f"You don't have '{item_name_to_drop}'.")
                     responded = True
                 elif command_word == "kill":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'kill' command.")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif player_instance.in_combat: temp_user_for_player.send_message("You are already fighting!")
@@ -622,7 +613,6 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message(f"There is no living '{target_name}' here.")
                     responded = True
                 elif command_word == "dash":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'dash' command.")
                     if not args:
                         temp_user_for_player.send_message("Dash where? (e.g., dash north)")
                     else:
@@ -646,7 +636,6 @@ def handle_client(conn, addr):
                                 temp_user_for_player.send_message("An unexpected error occurred with dashing.")
                     responded = True
                 elif command_word == "cast":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'cast' command.")
                     if len(args) < 2:
                         temp_user_for_player.send_message("Usage: cast \"<spell name>\" <target_name>")
                     else:
@@ -713,33 +702,35 @@ def handle_client(conn, addr):
                                             player_instance.target = None
                                             player_instance.in_combat = False
                                         remove_from_active_combat(target_mob_instance)
-                                        if not any(e for e in ACTIVE_COMBATANTS if hasattr(e, 'target') and e.target == player_instance): # Check if any other mob is targeting player
+                                        if not any(e for e in ACTIVE_COMBATANTS if hasattr(e, 'target') and e.target == player_instance):
                                              remove_from_active_combat(player_instance)
                                         print(f"[COMBAT_LOG] Player {player_instance.name} defeated {target_mob_instance.name} with a spell. Player combat state cleared.")
                     responded = True
                 elif command_word == "reload":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'reload' command.")
                     if not args:
+                        player_instance.is_reloading = True # Set flag before operations
                         load_world_and_game_data()
                         player_instance.recalculate_all_stats(full_heal=True)
-                        if player_instance.room_id not in world:
-                            player_instance.room_id = "start"
-                        player_instance.room = world.get(player_instance.room_id, world.get("start"))
 
-                    # Explicitly clear combat state after reload operations
-                    player_instance.in_combat = False
-                    player_instance.target = None
-                    remove_from_active_combat(player_instance) # Ensure they are not lingering in the combat list
-                    print(f"[DEBUG_RELOAD] Cleared combat state for {player_instance.name} after reload command.")
+                        # Clear combat state BEFORE room change and messages
+                        player_instance.in_combat = False
+                        player_instance.target = None
+                        if player_instance in ACTIVE_COMBATANTS: # Check before removing
+                            remove_from_active_combat(player_instance)
+                        print(f"[DEBUG_RELOAD] Cleared combat state for {player_instance.name} during reload.")
 
-                    temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
-                    if player_instance.room:
-                        temp_user_for_player.send_message(player_instance.room.display())
+                        target_room_id = player_instance.room_id if player_instance.room_id in world else "start"
+                        player_instance.room_id = target_room_id
+                        player_instance.room = world.get(target_room_id)
+
+                        temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
+                        if player_instance.room:
+                            temp_user_for_player.send_message(player_instance.room.display())
+                        player_instance.is_reloading = False # Clear flag after all operations
                     else:
                         temp_user_for_player.send_message("Usage: reload")
                     responded = True
                 elif command_word == "rest":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'rest' command.")
                     if player_instance.has_taken_action_this_turn:
                          temp_user_for_player.send_message("You have already taken an action this turn.")
                     elif player_instance.in_combat:
@@ -752,7 +743,6 @@ def handle_client(conn, addr):
                         player_instance.has_taken_action_this_turn = True
                     responded = True
                 elif command_word == "secondwind":
-                    # print("[DEBUG_HANDLE_CLIENT] Matched 'secondwind' command.")
                     if not args:
                         message = player_instance.use_second_wind()
                         temp_user_for_player.send_message(message)
@@ -769,8 +759,6 @@ def handle_client(conn, addr):
                 connection_active = False
 
             elif player_instance and player_instance.is_dead:
-                # print(f"[DEBUG_HANDLE_CLIENT] Player {player_instance.name} is dead. Entering DEAD loop.")
-
                 while player_instance and player_instance.is_dead:
                     if temp_user_for_player.connection is None:
                         print(f"[DEBUG_HANDLE_CLIENT] Connection lost for {username} at start of dead loop iteration.")
@@ -783,7 +771,6 @@ def handle_client(conn, addr):
                         connection_active = False; break
 
                     stripped_msg = msg.strip().lower()
-                    # print(f"[DEBUG_HANDLE_CLIENT] Dead player {player_instance.name} typed: '{stripped_msg}'")
 
                     if stripped_msg == "respawn":
                         if hasattr(player_instance, 'attempt_respawn'):
@@ -814,16 +801,29 @@ def handle_client(conn, addr):
     except ConnectionResetError: print(f"[-] Connection reset by {addr}")
     except Exception as e:
         print(f"[ERROR] Outer Exception in handle_client for {addr}: {e}")
-        # import traceback # Already imported at top
         traceback.print_exc()
     finally:
         print(f"[DEBUG_HANDLE_CLIENT] Finally block for {username or 'unknown user'}.")
         if player_instance:
-            remove_connected_player(player_instance)
-            if player_instance.in_combat : remove_from_active_combat(player_instance)
-            if player_instance.target and hasattr(player_instance.target, 'target') and player_instance.target.target == player_instance :
-                player_instance.target.target = None
-                if hasattr(player_instance.target, 'in_combat'): player_instance.target.in_combat = False
+            # Combat Logging: If player was alive and in combat when connection dropped / loop exited
+            if player_instance.in_combat and player_instance.is_alive() and not player_instance.is_dead: # Check is_alive and not is_dead
+                print(f"[COMBAT_LOG] Player {player_instance.name} disconnected/exited loop during combat. Marking as defeated.")
+                player_instance.current_hp = 0
+                player_instance.is_dead = True
+                player_instance.in_combat = False # Ensure this is false before save
+
+                mob_they_were_fighting = player_instance.target
+                if mob_they_were_fighting and hasattr(mob_they_were_fighting, 'target') and mob_they_were_fighting.target == player_instance:
+                    mob_they_were_fighting.target = None
+                    if hasattr(mob_they_were_fighting, 'in_combat'): mob_they_were_fighting.in_combat = False
+                    if mob_they_were_fighting in ACTIVE_COMBATANTS: remove_from_active_combat(mob_they_were_fighting)
+
+                player_instance.target = None
+
+            # Standard cleanup
+            if player_instance in CONNECTED_PLAYERS: remove_connected_player(player_instance) # Use the function
+            if player_instance in ACTIVE_COMBATANTS: remove_from_active_combat(player_instance)
+
 
             if username and user_data:
                 user_data["current_room_id"] = player_instance.room.id if player_instance.room else "start"
@@ -839,6 +839,8 @@ def handle_client(conn, addr):
                 user_data["race_name"] = player_instance.race_name
                 user_data["player_class_name"] = player_instance.player_class_name
                 user_data["used_abilities_this_rest"] = list(player_instance.used_abilities_this_rest)
+                # Do NOT save player_instance.is_reloading or player_instance.is_dead directly from the flag.
+                # is_dead is inferred from current_hp for saving.
                 UserManager.save_user_data(username, user_data)
                 print(f"[*] Player {player_instance.name} data saved for user {username}.")
         try:
