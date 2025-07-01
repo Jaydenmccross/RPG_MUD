@@ -182,57 +182,79 @@ def game_tick():
                         continue
 
                     if isinstance(entity, MobInstance):
-                        entity.tick_status_effects(CURRENT_GAME_ROUND)
-                        target_is_invalid = False
-                        if not entity.target:
-                            target_is_invalid = True
-                        elif not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead):
-                            target_is_invalid = True
-                        elif isinstance(entity.target, Player) and (entity.target not in CONNECTED_PLAYERS or entity.target.user.connection is None):
-                            print(f"[GAME_TICK_COMBAT] Mob {entity.name}'s target player {entity.target.name} is no longer connected or valid.")
-                            target_is_invalid = True
+                        # AGGRESSIVE TARGET VALIDATION AT THE START OF MOB'S TURN
+                        target_still_valid = True
+                        reason = ""
 
-                        if target_is_invalid:
+                        if not entity.target:
+                            target_still_valid = False
+                            reason = "has no target"
+                        elif not hasattr(entity.target, 'is_alive'): # Should not happen with proper types
+                            target_still_valid = False
+                            reason = "target object lacks 'is_alive' method"
+                        elif not entity.target.is_alive():
+                            target_still_valid = False
+                            reason = f"target '{entity.target.name if hasattr(entity.target,'name') else 'Unknown'}' is not alive (HP <= 0)"
+                        elif hasattr(entity.target, 'is_dead') and entity.target.is_dead: # Specifically for players
+                            target_still_valid = False
+                            reason = f"target Player '{entity.target.name}' is dead"
+                        elif isinstance(entity.target, Player): # Player-specific connection checks
+                            if entity.target.user is None:
+                                target_still_valid = False
+                                reason = f"target Player '{entity.target.name}' has no user object (disconnected)"
+                            elif entity.target.user.connection is None:
+                                target_still_valid = False
+                                reason = f"target Player '{entity.target.name}' has no connection (disconnected)"
+                            elif entity.target not in CONNECTED_PLAYERS:
+                                target_still_valid = False
+                                reason = f"target Player '{entity.target.name}' is not in CONNECTED_PLAYERS"
+
+                        if not target_still_valid:
+                            print(f"[GAME_TICK_MOB_VALIDATION] Mob {entity.name} {reason}. Disengaging.")
                             entity.target = None
                             entity.in_combat = False
                             combatants_to_remove_after_processing.append(entity)
+                            continue # Crucial: Skip the rest of this mob's turn
 
-                        elif entity.in_combat and entity.target and entity.target.is_alive() and \
-                           (not hasattr(entity.target, 'is_dead') or not entity.target.is_dead):
+                        # If target is valid, proceed with the mob's turn
+                        entity.tick_status_effects(CURRENT_GAME_ROUND)
+
+                        # Now, if the mob is in combat (it should be if target is valid and it's aggressive or was already fighting)
+                        if entity.in_combat: # entity.target is guaranteed to be valid here due to checks above
                             attack_messages = resolve_attack(entity, entity.target)
 
-                            # Check if target is a Player and if its user and connection are still valid before sending messages
-                            target_player_is_valid_for_messaging = False
-                            if isinstance(entity.target, Player):
-                                if entity.target.user and entity.target.user.connection:
-                                    target_player_is_valid_for_messaging = True
-                            # If not a player, or if it's a player and valid, proceed (mobs don't have .user to send messages to directly)
-                            elif not isinstance(entity.target, Player):
-                                target_player_is_valid_for_messaging = True # Non-players don't receive direct messages this way
-
-                            if target_player_is_valid_for_messaging and isinstance(entity.target, Player): # Only send if it's a player and still valid
+                            # Message the target (if player and STILL valid after attack)
+                            # resolve_attack might have killed the player, Player.handle_death might have run.
+                            if entity.target and isinstance(entity.target, Player) and \
+                               entity.target.user and entity.target.user.connection and \
+                               entity.target.is_alive() and not entity.target.is_dead: # Re-check player validity for messaging
                                 for line in attack_messages: entity.target.user.send_message(line)
 
-                            # Send messages to other players in the room
-                            if entity.target and entity.target.room: # Make sure entity.target is not None
+                            # Message other players in the room
+                            # entity.target might have become None if it died AND was cleared by resolve_attack or handle_death
+                            if entity.target and entity.target.room:
                                 for other_player in get_players_in_room(entity.target.room.id):
-                                    if other_player != entity.target: # Don't send to the target again
-                                        if other_player.user and other_player.user.connection: # Check other player's connection
+                                    if other_player != entity.target: # Avoid double-messaging target
+                                        if other_player.user and other_player.user.connection:
                                             for line in attack_messages: other_player.user.send_message(line)
 
-                            if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead):
-                                print(f"[GAME_TICK_COMBAT] Target {entity.target.name} died after attack from {entity.name}.")
-                                combatants_to_remove_after_processing.append(entity.target)
-                                entity.target = None
+                            # Check if target died from THIS attack sequence
+                            # It's possible entity.target became None if handle_death cleared it from the mob
+                            if entity.target and (not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead)):
+                                print(f"[GAME_TICK_COMBAT] Target {entity.target.name if hasattr(entity.target,'name') else 'UnknownTarget'} confirmed dead after {entity.name}'s attack.")
+                                combatants_to_remove_after_processing.append(entity.target) # Add the now-dead target
+                                entity.target = None # Mob disengages
                                 entity.in_combat = False
+                                combatants_to_remove_after_processing.append(entity) # Add the mob itself
+                            elif not entity.target: # If resolve_attack or handle_death already cleared the mob's target
+                                print(f"[GAME_TICK_COMBAT] Mob {entity.name}'s target was cleared during its attack. Ensuring mob disengages.")
+                                entity.in_combat = False # Ensure it's not stuck in combat
                                 combatants_to_remove_after_processing.append(entity)
-                        elif entity.in_combat:
-                            print(f"[GAME_TICK_COMBAT] Mob {entity.name} was in combat, but target became invalid before attack. Removing from combat.")
-                            entity.target = None
-                            entity.in_combat = False
-                            combatants_to_remove_after_processing.append(entity)
+                        # No 'else if entity.in_combat:' here, because if it was in combat but target was invalid,
+                        # the top validation block would have caught it and skipped to 'continue'.
 
                     elif isinstance(entity, Player):
+                        # Player's turn in combat (if any actions were to be automated or timed for players in game_tick)
                         target_is_invalid = False
                         if not entity.target:
                             target_is_invalid = True
