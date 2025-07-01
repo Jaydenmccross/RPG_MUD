@@ -200,12 +200,25 @@ def game_tick():
                         elif entity.in_combat and entity.target and entity.target.is_alive() and \
                            (not hasattr(entity.target, 'is_dead') or not entity.target.is_dead):
                             attack_messages = resolve_attack(entity, entity.target)
-                            if hasattr(entity.target.user, 'send_message'):
+
+                            # Check if target is a Player and if its user and connection are still valid before sending messages
+                            target_player_is_valid_for_messaging = False
+                            if isinstance(entity.target, Player):
+                                if entity.target.user and entity.target.user.connection:
+                                    target_player_is_valid_for_messaging = True
+                            # If not a player, or if it's a player and valid, proceed (mobs don't have .user to send messages to directly)
+                            elif not isinstance(entity.target, Player):
+                                target_player_is_valid_for_messaging = True # Non-players don't receive direct messages this way
+
+                            if target_player_is_valid_for_messaging and isinstance(entity.target, Player): # Only send if it's a player and still valid
                                 for line in attack_messages: entity.target.user.send_message(line)
+
+                            # Send messages to other players in the room
                             if entity.target.room:
                                 for other_player in get_players_in_room(entity.target.room.id):
-                                    if other_player != entity.target and hasattr(other_player.user, 'send_message'):
-                                        for line in attack_messages: other_player.user.send_message(line)
+                                    if other_player != entity.target: # Don't send to the target again
+                                        if other_player.user and other_player.user.connection: # Check other player's connection
+                                            for line in attack_messages: other_player.user.send_message(line)
 
                             if not entity.target.is_alive() or (hasattr(entity.target, 'is_dead') and entity.target.is_dead):
                                 print(f"[GAME_TICK_COMBAT] Target {entity.target.name} died after attack from {entity.name}.")
