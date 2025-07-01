@@ -214,7 +214,7 @@ def game_tick():
                                 for line in attack_messages: entity.target.user.send_message(line)
 
                             # Send messages to other players in the room
-                            if entity.target.room:
+                            if entity.target and entity.target.room: # Make sure entity.target is not None
                                 for other_player in get_players_in_room(entity.target.room.id):
                                     if other_player != entity.target: # Don't send to the target again
                                         if other_player.user and other_player.user.connection: # Check other player's connection
