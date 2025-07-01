@@ -732,9 +732,9 @@ def handle_client(conn, addr):
                     remove_from_active_combat(player_instance) # Ensure they are not lingering in the combat list
                     print(f"[DEBUG_RELOAD] Cleared combat state for {player_instance.name} after reload command.")
 
-                        temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
-                        if player_instance.room:
-                            temp_user_for_player.send_message(player_instance.room.display())
+                    temp_user_for_player.send_message("Game data reloaded. Stats refreshed.")
+                    if player_instance.room:
+                        temp_user_for_player.send_message(player_instance.room.display())
                     else:
                         temp_user_for_player.send_message("Usage: reload")
                     responded = True
