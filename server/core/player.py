@@ -13,6 +13,7 @@ ITEMS_DATA = {}
 ANSI_BLUE = "\033[94m"
 ANSI_RED = "\033[91m"
 ANSI_GREEN = "\033[92m"
+ANSI_YELLOW = "\033[93m" # Added ANSI_YELLOW
 ANSI_RESET = "\033[0m"
 
 
@@ -79,7 +80,7 @@ class Player:
 
         self.in_combat = False
         self.target = None
-        self.is_dead = False # New attribute for death state
+        self.is_dead = False
         self.is_reloading = False # Flag for when player is using reload command
 
         try:
@@ -596,7 +597,7 @@ class Player:
         message_to_send = random.choice(death_messages)
         if hasattr(self.user, 'send_message'):
             self.user.send_message(message_to_send)
-            self.user.send_message(f"{ANSI_YELLOW}Your soul lingers. Type 'respawn' to return to the Church of Testing, or 'quit' to embrace the void.{ANSI_RESET}")
+            self.user.send_message(f"{ANSI_YELLOW}Your soul lingers. Type 'respawn' to return to the Church of Testing, or 'wait' to await help (you will automatically respawn after 5 minutes if no help arrives). Type 'quit' to embrace the void.{ANSI_RESET}")
 
     def attempt_respawn(self):
         if not self.is_dead:
