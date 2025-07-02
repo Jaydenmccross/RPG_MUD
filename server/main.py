@@ -17,7 +17,7 @@ world = {}
 mobs_blueprints = {}
 
 ACTIVE_COMBATANTS = []
-combat_lock = threading.Lock()
+combat_lock = threading.RLock() # Changed to RLock
 CONNECTED_PLAYERS = []
 players_lock = threading.RLock() # Changed to RLock
 CURRENT_GAME_ROUND = 0
