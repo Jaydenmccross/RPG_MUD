@@ -543,6 +543,41 @@ def handle_client(conn, addr):
                 player_instance.reset_turn_actions()
 
                 if not stripped_msg: # Empty command from alive player
+                    if player_instance.in_combat and player_instance.target and player_instance.is_alive() and not player_instance.has_taken_action_this_turn:
+                        print(f"[HC_AUTO_ATTACK] Player {player_instance.name} is in combat and entered empty command. Performing auto-attack.")
+                        temp_user_for_player.send_message(f"{ANSI_YELLOW}You make a basic attack...{ANSI_RESET}")
+
+                        # Perform the attack (similar to 'kill' command's initial attack part)
+                        attack_messages = resolve_attack(player_instance, player_instance.target)
+                        for line in attack_messages: temp_user_for_player.send_message(line)
+                        player_instance.has_taken_action_this_turn = True
+
+                        if not player_instance.is_alive():
+                            print(f"[HC_AUTO_ATTACK_PLAYER_DIED] Player {player_instance.name} died during their auto-attack. Breaking.")
+                            break # Break from main while loop, death will be handled by next iteration or finally
+                        if player_instance.target and not player_instance.target.is_alive():
+                            print(f"[HC_AUTO_ATTACK_TARGET_DIED] Target {player_instance.target.name} died from player auto-attack.")
+                            player_instance.add_xp(player_instance.target.xp_value) # Assuming xp_value on mob
+                            if player_instance.room:
+                                player_instance.room.record_defined_mob_death(player_instance.target) # If it's a defined mob
+
+                            # Remove defender from combat if it died
+                            remove_from_active_combat(player_instance.target)
+                            # If player killed target, player might leave combat if not targeted by others
+                            # Check if player is still targeted by any other mob in ACTIVE_COMBATANTS
+                            still_targeted_by_mob = False
+                            with combat_lock: # Need lock to safely iterate ACTIVE_COMBATANTS
+                                for combatant in ACTIVE_COMBATANTS:
+                                    if combatant != player_instance and hasattr(combatant, 'target') and combatant.target == player_instance and combatant.is_alive():
+                                        still_targeted_by_mob = True
+                                        break
+                            if not still_targeted_by_mob:
+                                print(f"[HC_AUTO_ATTACK] Player {player_instance.name} no longer targeted, leaving combat.")
+                                player_instance.in_combat = False
+                                remove_from_active_combat(player_instance) # Remove player if they are no longer in combat
+                            player_instance.target = None # Clear player's target
+                        # Mob will get its turn via game_tick.
+                    # If not in combat or already took action, empty command does nothing.
                     continue
 
                 parts = stripped_msg.split(); command_word = parts[0].lower(); args = parts[1:]
@@ -899,16 +934,24 @@ def handle_client(conn, addr):
                         else:
                              temp_user_for_player.send_message("Respawn system not fully implemented on player object.")
                     elif stripped_msg == "quit" or stripped_msg == "exit":
-                        print(f"[HC_DEAD_LOOP_QUIT_CMD] '{stripped_msg}' command received. Closing connection for {player_instance.name}.")
+                        print(f"[HC_DIAG_DEAD_CMD] '{stripped_msg}' command received. Closing connection for {player_instance.name}.") # Corrected log prefix
                         temp_user_for_player.send_message("You embrace the void...")
                         connection_active = False; break
+                    elif command_word_dead == "wait": # Use command_word_dead for consistency
+                        print(f"[HC_DIAG_DEAD_CMD] 'wait' command received by {player_instance.name}.")
+                        temp_user_for_player.send_message("You patiently wait for your spirit to mend. (This feature is not fully implemented yet. Type 'respawn' or 'quit'.)")
+                        # Player stays in the dead loop, no state change from this command yet
+                    elif not command_word_dead: # Empty command
+                        pass # Just loop again for prompt, already handled by main loop structure
                     else:
-                        print(f"[HC_DEAD_LOOP_UNKNOWN_CMD] Unknown dead command '{stripped_msg}' for {player_instance.name}.")
+                        print(f"[HC_DIAG_DEAD_CMD] Unknown dead command '{command_word_dead}' for {player_instance.name}.") # Corrected log prefix and variable
                         temp_user_for_player.send_message("Your spirit is too weak to do that. Type 'respawn' to return to life or 'quit' to depart.")
-                print(f"[HC_DEAD_LOOP_EXIT] Exited dead loop for {player_instance.name}. Player state: Dead={player_instance.is_dead}, HP={player_instance.current_hp}")
 
-            elif not player_instance:
-                 print(f"[ERROR_HC] player_instance became None for {username}. Breaking client loop.")
+                # LOG AFTER EXITING DEAD LOOP (This log is actually part of the main loop's next iteration if player respawns, or before finally block if quit)
+                # The existing HC_DIAG_BRANCH will show player is alive, or loop will terminate if connection_active is false.
+
+            else: # Player is ALIVE
+                print(f"[HC_DIAG_BRANCH] Player {player_instance.name} IS ALIVE. Processing alive commands.")
                  connection_active = False
 
         player_name_for_log = player_instance.name if player_instance else (username or "unknown")
