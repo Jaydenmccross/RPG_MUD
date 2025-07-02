@@ -488,15 +488,23 @@ def handle_client(conn, addr):
                 break
 
             if player_instance.is_alive() and not player_instance.is_dead:
+                # LOG RE-ENTRY INTO ALIVE LOOP AND PLAYER STATE
+                print(f"[HC_DIAG_ALIVE_LOOP_REENTRY] Player {player_instance.name} RE-ENTERING ALIVE LOOP. State: Dead={player_instance.is_dead}, HP={player_instance.current_hp}, Combat={player_instance.in_combat}, Target={player_instance.target}, RoomID={player_instance.room_id if player_instance.room else 'None'}")
+
                 player_instance.reset_turn_actions()
                 temp_user_for_player.send_message("\r\n> ")
+
+                # LOG COMMANDS RECEIVED IN ALIVE LOOP POST-RESPAWN
                 msg = temp_user_for_player.read_line()
+                print(f"[HC_DIAG_ALIVE_LOOP_CMD_RAW] Raw ALIVE command for {player_instance.name}: '{msg}'")
+
                 if msg is None:
-                    print("[DEBUG_HANDLE_CLIENT] msg is None in alive loop, breaking.")
+                    print(f"[HC_DIAG_ALIVE_LOOP_CMD_NONE] Connection lost (msg is None) for {player_instance.name} in alive loop.")
                     connection_active = False
                     break
 
                 stripped_msg = msg.strip()
+                print(f"[HC_DIAG_ALIVE_LOOP_CMD_STRIPPED] Stripped ALIVE command for {player_instance.name}: '{stripped_msg}'")
                 if not stripped_msg:
                     continue
 
@@ -790,44 +798,55 @@ def handle_client(conn, addr):
                     temp_user_for_player.send_message("I don't understand that command.")
 
             if temp_user_for_player.connection is None:
-                print(f"[DEBUG_HANDLE_CLIENT] Connection lost for {username} during alive loop. Breaking.")
+                print(f"[DEBUG_HANDLE_CLIENT] Connection lost for {username} during alive loop (pre-death check). Breaking.")
                 connection_active = False
 
             elif player_instance and player_instance.is_dead:
+                print(f"[HC_DEAD_LOOP_ENTRY] Player {player_instance.name} entering dead loop. HP: {player_instance.current_hp}, Dead: {player_instance.is_dead}, Combat: {player_instance.in_combat}")
                 while player_instance and player_instance.is_dead:
                     if temp_user_for_player.connection is None:
-                        print(f"[DEBUG_HANDLE_CLIENT] Connection lost for {username} at start of dead loop iteration.")
+                        print(f"[HC_DEAD_LOOP_CONN_LOST] Connection lost for {username} at start of dead loop iteration.")
                         connection_active = False; break
 
                     temp_user_for_player.send_message(f"{ANSI_RED}[DEAD]{ANSI_RESET} > ")
                     msg = temp_user_for_player.read_line()
+                    print(f"[HC_DEAD_LOOP_MSG_RAW] Raw dead command for {player_instance.name}: '{msg}'")
                     if msg is None:
-                        print(f"[DEBUG_HANDLE_CLIENT] Connection lost while player {player_instance.name} was dead.")
+                        print(f"[HC_DEAD_LOOP_MSG_NONE] Connection lost (msg is None) while player {player_instance.name} was dead.")
                         connection_active = False; break
 
                     stripped_msg = msg.strip().lower()
+                    print(f"[HC_DEAD_LOOP_MSG_STRIPPED] Stripped dead command for {player_instance.name}: '{stripped_msg}'")
 
                     if stripped_msg == "respawn":
+                        print(f"[HC_DEAD_LOOP_RESPAWN_CMD] '{stripped_msg}' command received. Attempting respawn for {player_instance.name}.")
                         if hasattr(player_instance, 'attempt_respawn'):
                             respawned = player_instance.attempt_respawn()
+                            print(f"[HC_DEAD_LOOP_RESPAWN_RESULT] player_instance.attempt_respawn() returned: {respawned} for {player_instance.name}")
                             if respawned:
-                                print(f"[DEBUG_HANDLE_CLIENT] Player {player_instance.name} has respawned.")
+                                print(f"[HC_DEAD_LOOP_RESPAWN_SUCCESS] Player {player_instance.name} successfully respawned in player object.")
+                                print(f"[HC_DEAD_LOOP_POST_RESPAWN_STATE] Player {player_instance.name} state: Dead={player_instance.is_dead}, HP={player_instance.current_hp}, Combat={player_instance.in_combat}, Target={player_instance.target}")
                                 player_instance.room = world.get(player_instance.room_id)
                                 if player_instance.room:
+                                    print(f"[HC_DEAD_LOOP_RESPAWN_ROOM_DISPLAY] Sending room display for {player_instance.room.name} to {player_instance.name}")
                                     temp_user_for_player.send_message(player_instance.room.display())
                                 else:
                                     temp_user_for_player.send_message("You respawn into a strange void. (Error: Respawn room not found)")
-                                break
+                                print(f"[HC_DEAD_LOOP_BREAKING] Breaking from dead loop for {player_instance.name}.")
+                                break # Exit the 'while player_instance.is_dead'
                         else:
                              temp_user_for_player.send_message("Respawn system not fully implemented on player object.")
                     elif stripped_msg == "quit" or stripped_msg == "exit":
+                        print(f"[HC_DEAD_LOOP_QUIT_CMD] '{stripped_msg}' command received. Closing connection for {player_instance.name}.")
                         temp_user_for_player.send_message("You embrace the void...")
                         connection_active = False; break
                     else:
+                        print(f"[HC_DEAD_LOOP_UNKNOWN_CMD] Unknown dead command '{stripped_msg}' for {player_instance.name}.")
                         temp_user_for_player.send_message("Your spirit is too weak to do that. Type 'respawn' to return to life or 'quit' to depart.")
+                print(f"[HC_DEAD_LOOP_EXIT] Exited dead loop for {player_instance.name}. Player state: Dead={player_instance.is_dead}, HP={player_instance.current_hp}")
 
             elif not player_instance:
-                 print(f"[ERROR] player_instance became None for {username}. Breaking client loop.")
+                 print(f"[ERROR_HC] player_instance became None for {username}. Breaking client loop.")
                  connection_active = False
 
         player_name_for_log = player_instance.name if player_instance else (username or "unknown")
