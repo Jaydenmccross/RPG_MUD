@@ -487,29 +487,67 @@ def handle_client(conn, addr):
                 connection_active = False
                 break
 
-            if player_instance.is_alive() and not player_instance.is_dead:
-                # LOG RE-ENTRY INTO ALIVE LOOP AND PLAYER STATE
-                print(f"[HC_DIAG_ALIVE_LOOP_REENTRY] Player {player_instance.name} RE-ENTERING ALIVE LOOP. State: Dead={player_instance.is_dead}, HP={player_instance.current_hp}, Combat={player_instance.in_combat}, Target={player_instance.target}, RoomID={player_instance.room_id if player_instance.room else 'None'}")
+            # Read command input once at the beginning of the loop iteration
+            current_prompt = "\r\n> " if (player_instance and not player_instance.is_dead) else f"{ANSI_RED}[DEAD]{ANSI_RESET} > "
+            temp_user_for_player.send_message(current_prompt)
+            msg = temp_user_for_player.read_line()
+
+            if msg is None:
+                print(f"[HC_DIAG_MAIN_LOOP_MSG_NONE] Connection lost (msg is None) for {player_instance.name if player_instance else username}.")
+                connection_active = False
+                break # Exit main while loop
+
+            # Universal log for raw and stripped message
+            print(f"[HC_DIAG_MAIN_LOOP_CMD_RAW] Raw command for {player_instance.name if player_instance else username} (Dead={player_instance.is_dead if player_instance else 'N/A'}): '{msg}'")
+            stripped_msg = msg.strip()
+            # It's okay if stripped_msg is empty, the respective loops will handle it (e.g. continue)
+            print(f"[HC_DIAG_MAIN_LOOP_CMD_STRIPPED] Stripped command for {player_instance.name if player_instance else username}: '{stripped_msg}'")
+
+            if player_instance.is_dead:
+                print(f"[HC_DIAG_BRANCH] Player {player_instance.name} IS DEAD. Processing dead commands.")
+                # Dead Player Command Loop Logic
+                command_word_dead = stripped_msg.lower() # Process the command read at the start of the iteration
+
+                if command_word_dead == "respawn":
+                    print(f"[HC_DIAG_DEAD_CMD] 'respawn' command received. Attempting respawn for {player_instance.name}.")
+                    if hasattr(player_instance, 'attempt_respawn'):
+                        respawned = player_instance.attempt_respawn()
+                        print(f"[HC_DIAG_DEAD_CMD] player_instance.attempt_respawn() returned: {respawned} for {player_instance.name}")
+                        if respawned:
+                            print(f"[HC_DIAG_DEAD_CMD] Player {player_instance.name} successfully respawned in player object.")
+                            print(f"[HC_DIAG_DEAD_CMD] Post-Respawn State (Player Obj): Name={player_instance.name}, Dead={player_instance.is_dead}, HP={player_instance.current_hp}, Combat={player_instance.in_combat}, Target={player_instance.target}, RoomID={player_instance.room_id}")
+                            player_instance.room = world.get(player_instance.room_id)
+                            if player_instance.room:
+                                print(f"[HC_DIAG_DEAD_CMD] Sending room display for '{player_instance.room.name}' to {player_instance.name}")
+                                temp_user_for_player.send_message(player_instance.room.display())
+                            else:
+                                temp_user_for_player.send_message("You respawn into a strange void. (Error: Respawn room not found)")
+                            # No break here, the main loop condition 'player_instance.is_dead' will be false next iteration
+                        # else: No specific message if respawn failed here, attempt_respawn sends its own.
+                    else:
+                        temp_user_for_player.send_message("Respawn system not fully implemented on player object.")
+                elif command_word_dead == "quit" or command_word_dead == "exit":
+                    print(f"[HC_DIAG_DEAD_CMD] '{command_word_dead}' command received. Closing connection for {player_instance.name}.")
+                    temp_user_for_player.send_message("You embrace the void...")
+                    connection_active = False # This will break the main while loop
+                elif not command_word_dead: # Empty command
+                    pass # Just loop again for prompt
+                else:
+                    print(f"[HC_DIAG_DEAD_CMD] Unknown dead command '{command_word_dead}' for {player_instance.name}.")
+                    temp_user_for_player.send_message("Your spirit is too weak to do that. Type 'respawn' to return to life or 'quit' to depart.")
+
+            else: # Player is ALIVE
+                print(f"[HC_DIAG_BRANCH] Player {player_instance.name} IS ALIVE. Processing alive commands.")
+                print(f"[HC_DIAG_ALIVE_LOOP_REENTRY] Player {player_instance.name} ALIVE LOOP ITERATION. State: Dead={player_instance.is_dead}, HP={player_instance.current_hp}, Combat={player_instance.in_combat}, Target={player_instance.target}, RoomID={player_instance.room_id if player_instance.room else 'None'}")
 
                 player_instance.reset_turn_actions()
-                temp_user_for_player.send_message("\r\n> ")
 
-                # LOG COMMANDS RECEIVED IN ALIVE LOOP POST-RESPAWN
-                msg = temp_user_for_player.read_line()
-                print(f"[HC_DIAG_ALIVE_LOOP_CMD_RAW] Raw ALIVE command for {player_instance.name}: '{msg}'")
-
-                if msg is None:
-                    print(f"[HC_DIAG_ALIVE_LOOP_CMD_NONE] Connection lost (msg is None) for {player_instance.name} in alive loop.")
-                    connection_active = False
-                    break
-
-                stripped_msg = msg.strip()
-                print(f"[HC_DIAG_ALIVE_LOOP_CMD_STRIPPED] Stripped ALIVE command for {player_instance.name}: '{stripped_msg}'")
-                if not stripped_msg:
+                if not stripped_msg: # Empty command from alive player
                     continue
 
                 parts = stripped_msg.split(); command_word = parts[0].lower(); args = parts[1:]
                 command_word = COMMAND_ALIASES.get(command_word, command_word)
+                print(f"[HC_DIAG_ALIVE_CMD_PARSED] Parsed alive command: '{command_word}', Args: {args}")
                 responded = False
 
                 if command_word in DIRECTIONS and not args:
@@ -619,27 +657,45 @@ def handle_client(conn, addr):
                         else: temp_user_for_player.send_message(f"You don't have '{item_name_to_drop}'.")
                     responded = True
                 elif command_word == "kill":
+                    print(f"[HC_KILL_CMD_START] {player_instance.name} processing 'kill {args}'")
+                    print(f"[HC_KILL_CMD_CHECK_ACTION_TURN] Before check has_taken_action_this_turn. Value: {player_instance.has_taken_action_this_turn}")
                     if player_instance.has_taken_action_this_turn:
                         temp_user_for_player.send_message("You have already taken an action this turn.")
-                    elif player_instance.in_combat: temp_user_for_player.send_message("You are already fighting!")
+                    elif player_instance.in_combat:
+                        print(f"[HC_KILL_CMD_ALREADY_IN_COMBAT] Player {player_instance.name} is already in combat.")
+                        temp_user_for_player.send_message("You are already fighting!")
                     elif not args: temp_user_for_player.send_message("Kill what?")
                     else:
-                        target_name = " ".join(args).lower(); target_mob_instance = None
+                        target_name = " ".join(args).lower()
+                        print(f"[HC_KILL_CMD_FIND_MOB_START] Searching for mob: {target_name}")
+                        target_mob_instance = None
                         if player_instance.room and player_instance.room.mob_instances:
                             for mob_in_room in player_instance.room.mob_instances:
+                                print(f"[HC_KILL_CMD_FIND_MOB_CHECKING] Checking mob: {mob_in_room.name} (Alive: {mob_in_room.is_alive()})")
                                 if mob_in_room.name.lower() == target_name and mob_in_room.is_alive():
                                     target_mob_instance = mob_in_room; break
+                        print(f"[HC_KILL_CMD_FIND_MOB_RESULT] Found mob: {target_mob_instance.name if target_mob_instance else 'None'}")
                         if target_mob_instance:
+                            print(f"[HC_KILL_CMD_MOB_FOUND] Mob {target_mob_instance.name} found. Setting combat states.")
                             player_instance.target = target_mob_instance; player_instance.in_combat = True
                             target_mob_instance.target = player_instance; target_mob_instance.in_combat = True
+                            print(f"[HC_KILL_CMD_ADD_TO_COMBAT] Adding {player_instance.name} and {target_mob_instance.name} to active combat.")
                             add_to_active_combat(player_instance); add_to_active_combat(target_mob_instance)
                             temp_user_for_player.send_message(f"You attack the {target_mob_instance.name}!")
+
+                            print(f"[HC_KILL_CMD_BEFORE_RESOLVE_ATTACK] About to call resolve_attack for {player_instance.name} vs {target_mob_instance.name}")
                             attack_messages = resolve_attack(player_instance, target_mob_instance)
+                            print(f"[HC_KILL_CMD_AFTER_RESOLVE_ATTACK] After resolve_attack. Player alive: {player_instance.is_alive()}. Attack messages: {attack_messages}")
                             for line in attack_messages: temp_user_for_player.send_message(line)
+
                             player_instance.has_taken_action_this_turn = True
-                            if not player_instance.is_alive(): break
+                            print(f"[HC_KILL_CMD_CHECK_PLAYER_DEATH_BREAK] Before 'if not player_instance.is_alive(): break'. Player alive: {player_instance.is_alive()}")
+                            if not player_instance.is_alive():
+                                print(f"[HC_KILL_CMD_PLAYER_DIED_DURING_ATTACK] Player {player_instance.name} died during their own attack sequence. Breaking from command processing.")
+                                break # Break from main while player_instance and connection_active loop
 
                             if not target_mob_instance.is_alive():
+                                print(f"[HC_KILL_CMD_TARGET_DEFEATED] Target {target_mob_instance.name} defeated by player.")
                                 player_instance.add_xp(target_mob_instance.xp_value)
                                 if player_instance.room:
                                     player_instance.room.record_defined_mob_death(target_mob_instance)
@@ -649,11 +705,15 @@ def handle_client(conn, addr):
                                 remove_from_active_combat(player_instance)
                                 remove_from_active_combat(target_mob_instance)
                                 print(f"[COMBAT_LOG] Player {player_instance.name} defeated {target_mob_instance.name}. Player combat state cleared.")
-                            elif player_instance.is_alive():
+                            elif player_instance.is_alive(): # Check player alive again before mob retaliates
+                                print(f"[HC_KILL_CMD_MOB_RETALIATION_START] Mob {target_mob_instance.name} retaliating.")
                                 temp_user_for_player.send_message(f"The {target_mob_instance.name} retaliates!")
                                 mob_attack_messages = resolve_attack(target_mob_instance, player_instance)
+                                print(f"[HC_KILL_CMD_MOB_RETALIATION_END] After mob retaliation. Player alive: {player_instance.is_alive()}. Mob attack messages: {mob_attack_messages}")
                                 for line in mob_attack_messages: temp_user_for_player.send_message(line)
+                                # Player might die here, death will be handled by main loop check or game_tick
                         else: temp_user_for_player.send_message(f"There is no living '{target_name}' here.")
+                    print(f"[HC_KILL_CMD_END] End of 'kill' command processing for {player_instance.name}.")
                     responded = True
                 elif command_word == "dash":
                     if not args:
@@ -736,7 +796,9 @@ def handle_client(conn, addr):
                                 if cast_messages:
                                     for line in cast_messages:
                                         temp_user_for_player.send_message(line)
-                                    if not player_instance.is_alive(): break
+                                    if not player_instance.is_alive():
+                                        print(f"[HC_CAST_PLAYER_DIED] Player {player_instance.name} died during spell cast. Breaking.")
+                                        break # Break from main while
                                     if not target_mob_instance.is_alive() and any("hits" in m.lower() or "critical hit" in m.lower() for m in cast_messages):
                                         player_instance.add_xp(target_mob_instance.xp_value)
                                         if player_instance.room:
