@@ -134,7 +134,43 @@
     "asi_levels": [4, 6, 8, 12, 14, 16, 19],
     "features_by_level": {
       "1": [
-        {"name": "Fighting Style", "description": "You adopt a particular style of fighting as your specialty. Choose one of the available fighting styles. You can't take a Fighting Style option more than once, even if you later get to choose again."},
+        {
+          "name": "Fighting Style",
+          "description": "You adopt a particular style of fighting as your specialty. Choose one. You can't take a Fighting Style option more than once, even if you later get to choose again.",
+          "choices_feature_type": "fighting_style",
+          "available_choices": [
+            {
+              "name": "Archery",
+              "description": "You gain a +2 bonus to attack rolls you make with ranged weapons.",
+              "effects": {"bonus_ranged_attack_roll": 2}
+            },
+            {
+              "name": "Defense",
+              "description": "While you are wearing armor, you gain a +1 bonus to AC.",
+              "effects": {"bonus_ac_if_armored": 1}
+            },
+            {
+              "name": "Dueling",
+              "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+              "effects": {"bonus_damage_one_handed_melee": 2}
+            },
+            {
+              "name": "Great Weapon Fighting",
+              "description": "When you roll a 1 or 2 on a damage die for an attack you make with a melee weapon that you are wielding with two hands, you can reroll the die and must use the new roll. The weapon must have the two-handed or versatile property for you to gain this benefit.",
+              "effects": {"reroll_1_or_2_on_damage_two_handed": true}
+            },
+            {
+              "name": "Protection",
+              "description": "When a creature you can see attacks a target other than you that is within 5 feet of you, you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.",
+              "effects": {"protection_reaction": true}
+            },
+            {
+              "name": "Two-Weapon Fighting",
+              "description": "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack.",
+              "effects": {"two_weapon_fighting_mod_to_damage": true}
+            }
+          ]
+        },
         {
           "name": "Second Wind",
           "description": "You have a limited well of stamina that you can draw on to protect yourself from harm. On your turn, you can use this ability to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
@@ -146,15 +182,104 @@
           "refresh_on": "short_or_long_rest"
         }
       ],
-      "2": [{"name": "Action Surge (one use)", "description": "..."}],
+      "2": [{
+        "name": "Action Surge",
+        "description": "Starting at 2nd level, you can push yourself beyond your normal limits for a moment. On your turn, you can take one additional action. Once you use this feature, you must finish a short or long rest before you can use it again.",
+        "uses": 1,
+        "refresh_on": "short_or_long_rest"
+      }],
       "3": [{"name": "Martial Archetype", "description": "..."}],
-      "5": [{"name": "Extra Attack (1)", "description": "..."}],
-      "20": [{"name": "Extra Attack (3) / Action Surge (two uses)", "description": "..."}]
+      "5": [{
+        "name": "Extra Attack",
+        "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+        "effects": {"set_extra_attacks": 1}
+      }],
+      "9": [{
+        "name": "Indomitable",
+        "description": "Beginning at 9th level, you can reroll a saving throw that you fail. If you do so, you must use the new roll, and you can’t use this feature again until you finish a long rest.",
+        "uses": 1,
+        "refresh_on": "long_rest"
+      }],
+      "11": [{
+        "name": "Extra Attack (2)",
+        "description": "At 11th level, you can attack three times when you take the Attack action.",
+        "override_feature_name": "Extra Attack",
+        "effects": {"set_extra_attacks": 2}
+      }],
+      "13": [{
+        "name": "Indomitable (two uses)",
+        "description": "At 13th level, you gain a second use of Indomitable between long rests.",
+        "override_feature_name": "Indomitable",
+        "uses": 2,
+        "refresh_on": "long_rest"
+      }],
+      "17": [{
+        "name": "Action Surge (two uses)",
+        "description": "Beginning at 17th level, you can use Action Surge twice before a rest, but only once on the same turn.",
+        "override_feature_name": "Action Surge", # Indicates this modifies the base "Action Surge"
+        "uses": 2,
+        "refresh_on": "short_or_long_rest"
+      }, {
+        "name": "Indomitable (three uses)",
+        "description": "At 17th level, you gain a third use of Indomitable between long rests.",
+        "override_feature_name": "Indomitable",
+        "uses": 3,
+        "refresh_on": "long_rest"
+      }],
+      "20": [{
+        "name": "Extra Attack (3)",
+        "description": "At 20th level, you can attack four times when you take the Attack action.",
+        "override_feature_name": "Extra Attack",
+        "effects": {"set_extra_attacks": 3}
+      }]
     },
     "subclasses": {
-      "Battle Master": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}},
-      "Champion": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}},
-      "Eldritch Knight": {"description": "...", "features_by_level": {"3":[], "7":[], "10":[], "15":[], "18":[]}}
+      "Battle Master": {
+        "description": "A Battle Master uses special combat maneuvers to control the battlefield and enhance their attacks.",
+        "features_by_level": {
+          "3": [{"name": "Combat Superiority", "description": "You learn maneuvers that are fueled by special dice called superiority dice."}],
+          "7": [{"name": "Know Your Enemy", "description": "..."}],
+          "10": [{"name": "Improved Combat Superiority (d10)", "description": "..."}],
+          "15": [{"name": "Relentless", "description": "..."}],
+          "18": [{"name": "Improved Combat Superiority (d12)", "description": "..."}]
+        }
+      },
+      "Champion": {
+        "description": "The Champion archetype focuses on the raw power of physical prowess, hitting harder and more often.",
+        "features_by_level": {
+          "3": [{
+            "name": "Improved Critical",
+            "description": "Your weapon attacks score a critical hit on a roll of 19 or 20.",
+            "effects": {"set_crit_range": [19, 20]}
+          }],
+          "7": [{
+            "name": "Remarkable Athlete",
+            "description": "You can add half your proficiency bonus (round up) to any Strength, Dexterity, or Constitution check that doesn't already use your proficiency bonus. Also, your running long jump distance increases by your Strength modifier.",
+            "effects": {"remarkable_athlete": True}
+          }],
+          "10": [{"name": "Additional Fighting Style", "description": "..."}],
+          "15": [{
+            "name": "Superior Critical",
+            "description": "Your weapon attacks score a critical hit on a roll of 18, 19, or 20.",
+            "effects": {"set_crit_range": [18, 19, 20]}
+          }],
+          "18": [{
+            "name": "Survivor",
+            "description": "At the start of each of your turns, you regain hit points equal to 5 + your Constitution modifier if you have no more than half of your hit points left. You don’t gain this benefit if you have 0 hit points.",
+            "effects": {"survivor_regen_phb": true}
+            }]
+        }
+      },
+      "Eldritch Knight": {
+        "description": "The Eldritch Knight combines martial mastery with the careful study of magic.",
+        "features_by_level": {
+          "3": [{"name": "Spellcasting (Eldritch Knight)", "description": "..."}, {"name": "Weapon Bond", "description": "..."}],
+          "7": [{"name": "War Magic", "description": "..."}],
+          "10": [{"name": "Eldritch Strike", "description": "..."}],
+          "15": [{"name": "Arcane Charge", "description": "..."}],
+          "18": [{"name": "Improved War Magic", "description": "..."}]
+        }
+      }
     }
   },
   "Monk": {
@@ -245,7 +370,38 @@
       "20": [{"name": "Stroke of Luck", "description": "..."}]
     },
     "subclasses": {
-      "Thief": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}},
+      "Thief": {
+        "description": "Thieves hone their skills in the subtler arts of larceny, stealth, and infiltration.",
+        "features_by_level": {
+          "3": [
+            {
+              "name": "Fast Hands",
+              "description": "You can use the bonus action granted by your Cunning Action to make a Dexterity (Sleight of Hand) check, use your thieves' tools to disarm a trap or open a lock, or take the Use an Object action.",
+              "effects": {"cunning_action_options_add": ["Sleight of Hand Check", "Use Thieves' Tools", "Use an Object"]}
+            },
+            {
+              "name": "Second-Story Work",
+              "description": "Climbing no longer costs you extra movement. When you make a running long jump, the distance you cover increases by a number of feet equal to your Dexterity modifier.",
+              "effects": {"ignore_climbing_extra_movement_cost": true, "add_dex_mod_to_long_jump_distance": true}
+            }
+          ],
+          "9": [{
+            "name": "Supreme Sneak",
+            "description": "You have advantage on a Dexterity (Stealth) check if you move no more than half your speed on the same turn.",
+            "effects": {"advantage_on_stealth_if_half_move": true}
+          }],
+          "13": [{
+            "name": "Use Magic Device",
+            "description": "You ignore all class, race, and level requirements on the use of magic items.",
+            "effects": {"ignore_magic_item_requirements": true}
+          }],
+          "17": [{
+            "name": "Thief's Reflexes",
+            "description": "You take two turns during the first round of combat: one at your normal initiative, and a second at your initiative minus 10. You can't use this if surprised.",
+            "effects": {"extra_turn_first_round_initiative_minus_10": true}
+          }]
+        }
+      },
       "Assassin": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}},
       "Arcane Trickster": {"description": "...", "features_by_level": {"3":[], "9":[], "13":[], "17":[]}}
     }

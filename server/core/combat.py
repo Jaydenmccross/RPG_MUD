@@ -58,6 +58,19 @@ def roll_dice(dice_string):
     total_roll = sum(random.randint(1, dice_sides) for _ in range(num_dice))
     return total_roll + modifier
 
+def roll_d20_with_advantage_disadvantage(advantage=False, disadvantage=False):
+    """Rolls a d20, applying advantage or disadvantage if specified."""
+    roll1 = random.randint(1, 20)
+    if advantage and disadvantage: # If both, they cancel out
+        return roll1, "normal"
+    if advantage:
+        roll2 = random.randint(1, 20)
+        return max(roll1, roll2), "advantage"
+    if disadvantage:
+        roll2 = random.randint(1, 20)
+        return min(roll1, roll2), "disadvantage"
+    return roll1, "normal"
+
 def resolve_attack(attacker, defender,
                    attack_bonus_override=None,
                    damage_dice_override=None,
@@ -73,7 +86,8 @@ def resolve_attack(attacker, defender,
         messages.append("Debug: Attacker or defender is missing.")
         return messages
 
-    crit_range = [20] # Standard critical hit range
+    # Determine crit range from attacker, default to [20] if not specified
+    crit_range = getattr(attacker, 'crit_range', [20])
 
     # Determine attack parameters
     if attack_bonus_override is not None: # Spell/ability attack
@@ -104,16 +118,47 @@ def resolve_attack(attacker, defender,
     defender_ac = getattr(defender, 'ac', 10) # Default AC if not specified
 
     # Attack roll
-    roll = random.randint(1, 20)
-    total_attack_roll = roll + attack_bonus
+    # Determine if attacker has advantage or disadvantage
+    # TODO: This logic will become much more complex based on conditions, features, spells.
+    has_advantage = False
+    has_disadvantage = False
 
-    is_critical_hit = (roll in crit_range)
-    is_critical_miss = (roll == 1) # Natural 1 is always a miss for attacks
+    # Example: Blinded condition on attacker
+    if hasattr(attacker, 'has_condition') and attacker.has_condition("Blinded"): # Assuming Player.CONDITION_BLINDED is "Blinded"
+        has_disadvantage = True
 
-    messages.append(f"{attacker.name} attacks {defender.name} (Roll: {roll} + Bonus: {attack_bonus} = {total_attack_roll} vs AC: {defender_ac})")
+    # Example: Defender is Restrained (attacker has advantage) - this requires checking defender's conditions
+    if hasattr(defender, 'has_condition') and defender.has_condition("Restrained"): # Assuming Player.CONDITION_RESTRAINED
+        has_advantage = True
+    # Example: Attacker is invisible (attacker has advantage)
+    if hasattr(attacker, 'has_condition') and attacker.has_condition("Invisible"):
+        has_advantage = True
 
-    if is_critical_miss:
-        messages.append(f"{ANSI_RED}Critical Miss!{ANSI_RESET} {attacker.name} misses {defender.name} spectacularly.")
+
+    roll, roll_type_str = roll_d20_with_advantage_disadvantage(advantage=has_advantage, disadvantage=has_disadvantage)
+
+    # Handle bonus dice from effects like Bless
+    bonus_dice_value = 0
+    if hasattr(attacker, 'get_bonus_dice_for_roll_type'):
+        bonus_dice_list = attacker.get_bonus_dice_for_roll_type("attack")
+        for dice_str in bonus_dice_list:
+            bonus_dice_value += roll_dice(dice_str) # roll_dice is in this file
+
+    total_attack_roll = roll + attack_bonus + bonus_dice_value
+
+    is_critical_hit = (roll in crit_range) # Natural 20 is a crit (original d20 roll, not total)
+    is_critical_miss = (roll == 1) # Natural 1 is always a miss for attacks (original d20 roll)
+
+    roll_description = f"Roll: {roll}"
+    if roll_type_str != "normal":
+        roll_description += f" ({roll_type_str})"
+
+    messages.append(f"{attacker.name} attacks {defender.name} ({roll_description} + Bonus: {attack_bonus} = {total_attack_roll} vs AC: {defender_ac})")
+
+    if is_critical_miss and not is_critical_hit: # A nat 1 on an advantaged roll that also rolled a 20 should still be a crit hit.
+        # However, 5e rules: "If the d20 roll for an attack is a 1, the attack misses regardless of any modifiers or the target's AC."
+        # So a nat 1 is always a miss. A nat 20 is always a hit (and crit).
+        messages.append(f"{ANSI_RED}Critical Miss! (Rolled a 1){ANSI_RESET} {attacker.name} misses {defender.name} spectacularly.")
         return messages
 
     if total_attack_roll >= defender_ac or is_critical_hit: # Hit
@@ -140,7 +185,7 @@ def resolve_attack(attacker, defender,
         messages.append(f"{attacker.name} hits {defender.name} for {ANSI_RED}{damage}{ANSI_RESET} {damage_type} damage.")
 
         if hasattr(defender, 'take_damage'):
-            defender.take_damage(damage, attacker) # Pass attacker for aggro/credit
+            defender.take_damage(damage, attacker=attacker, damage_type=damage_type)
             if not defender.is_alive():
                 messages.append(f"{ANSI_GREEN}{defender.name} has been defeated!{ANSI_RESET}")
                 # Death handling (XP, loot, etc.) is usually managed by the game loop or calling function

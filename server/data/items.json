@@ -10,7 +10,24 @@
     "effects": {},
     "properties": {
       "two_handed": false,
-      "weapon_type": "martial_melee"
+      "weapon_type": "martial_melee",
+      "category": "melee"
+    }
+  },
+  "short_bow": {
+    "name": "Short Bow",
+    "description": "A simple wooden short bow.",
+    "type": "weapon",
+    "weight": 2.0,
+    "equip_slots": ["Weapon (Main Hand)"],
+    "min_damage": 1,
+    "max_damage": 6,
+    "effects": {},
+    "properties": {
+      "two_handed": true,
+      "weapon_type": "simple_ranged",
+      "category": "ranged",
+      "range": [80, 320]
     }
   },
   "great_axe": {
