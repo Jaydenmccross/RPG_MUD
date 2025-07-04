@@ -1,8 +1,29 @@
 {
   "goblin001": {
     "name": "Goblin",
-    "hp": 12,
-    "attack": 3,
+    "max_hp": 12,
+    "ac": 13,
+    "attack_bonus": 3,
+    "damage_dice": "1d6+1",
+    "xp_value": 25,
+    "is_aggressive": true,
     "description": "A small, smelly goblin wielding a crooked dagger."
+  },
+  "goblin_emissary001": {
+    "name": "Goblin Emissary",
+    "max_hp": 10,
+    "ac": 12,
+    "attack_bonus": 1,
+    "damage_dice": "1d4",
+    "xp_value": 15,
+    "is_aggressive": false,
+    "description": "A slightly cleaner goblin, clutching a tattered scroll. It looks nervous.",
+    "can_be_persuaded": true,
+    "persuasion_dc": 14,
+    "dialogue": {
+      "default": "Wot you want? Me busy!",
+      "persuade_success": "Oh, alright then. Boss said to watch out for a shiny rock near the old stump. Maybe you find?",
+      "persuade_fail": "Go away, stupid! Or I call guards!"
+    }
   }
 }

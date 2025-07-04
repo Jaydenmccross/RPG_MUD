@@ -8,7 +8,7 @@ from server.core.content import MobInstance, ItemInstance, ContainerInstance, It
 
 class Room:
     def __init__(self, room_id, name, description, exits,
-                 mob_definitions=None, item_definitions=None):
+                 mob_definitions=None, item_definitions=None, investigatable_objects=None):
         self.id = room_id
         self.name = name
         self.description = description
@@ -17,6 +17,7 @@ class Room:
         # Definitions for what *should* spawn in this room
         self.mob_definitions = mob_definitions if mob_definitions is not None else []
         self.item_definitions = item_definitions if item_definitions is not None else []
+        self.investigatable_objects = investigatable_objects if investigatable_objects is not None else {}
 
         # Live instances currently in the room
         self.mob_instances = []  # List of MobInstance objects
@@ -152,26 +153,27 @@ class Room:
             "name": self.name,
             "description": self.description,
             "exits": self.exits,
-            "mob_definitions": self.mob_definitions, # Save the definitions
-            "item_definitions": self.item_definitions # Save the definitions
+            "mob_definitions": self.mob_definitions,
+            "item_definitions": self.item_definitions,
+            "investigatable_objects": self.investigatable_objects
         }
 
     @staticmethod
     def load_rooms(file_path="server/data/world.json"): # Default path added
         if not os.path.exists(file_path):
             print(f"Warning: World data file not found at {file_path}. Creating default room.")
-            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [])
+            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [], {})
             return {"start": default_room}
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
         except json.JSONDecodeError:
             print(f"Error: Could not decode JSON from {file_path}. Creating default room.")
-            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [])
+            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [], {})
             return {"start": default_room}
         except Exception as e:
             print(f"Error loading {file_path}: {e}. Creating default room.")
-            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [])
+            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [], {})
             return {"start": default_room}
 
         rooms = {}
@@ -185,12 +187,13 @@ class Room:
                 name=room_data.get("name", room_id),
                 description=room_data.get("description", "A non-descript location."),
                 exits=room_data.get("exits", {}),
-                mob_definitions=room_data.get("mob_definitions", []), # Load definitions
-                item_definitions=room_data.get("item_definitions", [])  # Load definitions
+                mob_definitions=room_data.get("mob_definitions", []),
+                item_definitions=room_data.get("item_definitions", []),
+                investigatable_objects=room_data.get("investigatable_objects", {})
             )
         if not rooms: # If file was empty or all entries malformed
             print(f"Warning: No valid rooms loaded from {file_path}. Creating default room.")
-            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [])
+            default_room = Room("start", "The Void", "An empty, featureless void.", {}, [], [], {})
             return {"start": default_room}
 
         return rooms

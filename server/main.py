@@ -522,6 +522,154 @@ def handle_client(conn, addr):
                     if not args: temp_user_for_player.send_message(player_instance.display_inventory())
                     else: temp_user_for_player.send_message("Just type 'inventory' or 'i'.")
                     responded = True
+                elif command_word == "hide":
+                    if player_instance.has_taken_action_this_turn: # Hiding is an action
+                        temp_user_for_player.send_message("You have already taken your action this turn.")
+                    elif player_instance.in_combat and not player_instance.has_condition(Player.CONDITION_INVISIBLE): # Simplified: can't hide in plain sight in combat unless invisible
+                        temp_user_for_player.send_message("You can't hide effectively while they're watching you!")
+                        # TODO: More complex hide in combat (bonus action for rogues, specific conditions)
+                    else:
+                        stealth_bonus = player_instance.get_skill_bonus("Stealth")
+                        # TODO: Advantage/Disadvantage on Stealth check based on conditions/environment
+                        d20_roll, roll_type_str = roll_d20_with_advantage_disadvantage() # from combat.py
+                        total_stealth_roll = d20_roll + stealth_bonus
+
+                        # For now, fixed DC. Later, could be opposed by mob Perception.
+                        hide_dc = 13
+
+                        roll_msg = f"You attempt to hide (Stealth: {d20_roll} + {stealth_bonus} = {total_stealth_roll} vs DC {hide_dc})."
+                        if roll_type_str != "normal": roll_msg = roll_msg.replace("Stealth:", f"Stealth ({roll_type_str}):")
+                        temp_user_for_player.send_message(roll_msg)
+
+                        if total_stealth_roll >= hide_dc:
+                            # Duration of 1 round for now (i.e., until your next turn starts or you act)
+                            # Actual duration/breaking conditions are more complex in 5e.
+                            player_instance.add_condition(Player.CONDITION_HIDDEN, duration_rounds=1, source="Hide Action")
+                            temp_user_for_player.send_message(f"{ANSI_GREEN}You slip into the shadows, hidden from view.{ANSI_RESET}")
+                        else:
+                            temp_user_for_player.send_message(f"{ANSI_RED}You fail to hide effectively.{ANSI_RESET}")
+                        player_instance.has_taken_action_this_turn = True
+                    responded = True
+                elif command_word == "persuade":
+                    if not args:
+                        temp_user_for_player.send_message("Persuade whom? (And optionally, what to say: persuade <target> [message])")
+                    else:
+                        target_name = args[0].lower() # For now, assume target name is one word or use first word
+                        # message_text = " ".join(args[1:]) # Optional message text
+
+                        target_mob_instance = None
+                        if player_instance.room and player_instance.room.mob_instances:
+                            for mob_in_room in player_instance.room.mob_instances:
+                                if mob_in_room.name.lower() == target_name and mob_in_room.is_alive():
+                                    target_mob_instance = mob_in_room
+                                    break
+
+                        if not target_mob_instance:
+                            temp_user_for_player.send_message(f"You don't see '{args[0]}' here to persuade.")
+                        elif not getattr(target_mob_instance.mob_blueprint, 'can_be_persuaded', False):
+                            temp_user_for_player.send_message(f"{target_mob_instance.name} doesn't seem interested in talking.")
+                        elif player_instance.has_taken_action_this_turn: # Persuasion takes an action
+                             temp_user_for_player.send_message("You have already taken your action this turn.")
+                        else:
+                            persuasion_bonus = player_instance.get_skill_bonus("Persuasion")
+                            d20_roll, roll_type_str = roll_d20_with_advantage_disadvantage() # from combat.py
+                            total_persuasion_roll = d20_roll + persuasion_bonus
+                            persuasion_dc = getattr(target_mob_instance.mob_blueprint, 'persuasion_dc', 15) # Default DC if not set
+
+                            roll_msg = f"You attempt to persuade {target_mob_instance.name} (Persuasion: {d20_roll} + {persuasion_bonus} = {total_persuasion_roll} vs DC {persuasion_dc})."
+                            if roll_type_str != "normal": roll_msg = roll_msg.replace("Persuasion:", f"Persuasion ({roll_type_str}):")
+                            temp_user_for_player.send_message(roll_msg)
+
+                            dialogue = getattr(target_mob_instance.mob_blueprint, 'dialogue', {})
+                            if total_persuasion_roll >= persuasion_dc:
+                                temp_user_for_player.send_message(f"{target_mob_instance.name}: \"{dialogue.get('persuade_success', 'Hmm, you make a good point.')}\"")
+                                # Mechanical effect: make non-aggressive, stop combat with player
+                                if target_mob_instance.is_aggressive:
+                                    target_mob_instance.is_aggressive = False # Temporarily? Needs duration logic
+                                    # TODO: Add temporary effect "Pacified" for X rounds.
+                                    temp_user_for_player.send_message(f"{target_mob_instance.name} seems calmer now.")
+                                if target_mob_instance.target == player_instance:
+                                    target_mob_instance.target = None
+                                    target_mob_instance.in_combat = False
+                                    # If player was only fighting this mob, player also leaves combat
+                                    if player_instance.target == target_mob_instance:
+                                        player_instance.target = None
+                                        # Check if any other mob is targeting player before setting in_combat to False
+                                        still_targeted = False
+                                        with combat_lock: temp_combatants = list(ACTIVE_COMBATANTS)
+                                        for combatant in temp_combatants:
+                                            if combatant != target_mob_instance and combatant.is_alive() and \
+                                               hasattr(combatant, 'target') and combatant.target == player_instance:
+                                                still_targeted = True
+                                                break
+                                        if not still_targeted:
+                                            player_instance.in_combat = False
+                                            remove_from_active_combat(player_instance)
+
+                            else:
+                                temp_user_for_player.send_message(f"{target_mob_instance.name}: \"{dialogue.get('persuade_fail', 'I am not convinced!')}\"")
+                            player_instance.has_taken_action_this_turn = True
+                    responded = True
+                elif command_word == "investigate":
+                    if not args:
+                        temp_user_for_player.send_message("Investigate what?")
+                    elif player_instance.has_taken_action_this_turn:
+                         temp_user_for_player.send_message("You have already taken your action this turn.")
+                    else:
+                        target_object_name_input = " ".join(args).lower()
+                        found_object_key = None
+                        obj_data = None
+
+                        if player_instance.room and hasattr(player_instance.room, 'investigatable_objects'):
+                            for key, data in player_instance.room.investigatable_objects.items():
+                                if data.get("display_name", "").lower() == target_object_name_input or \
+                                   target_object_name_input in data.get("aliases", []):
+                                    found_object_key = key
+                                    obj_data = data
+                                    break
+
+                        if not obj_data:
+                            temp_user_for_player.send_message(f"You don't see anything like '{target_object_name_input}' to investigate here.")
+                        else:
+                            loot_flag_id = obj_data.get("loot_once_flag_id")
+                            if loot_flag_id and loot_flag_id in player_instance.triggered_room_flags:
+                                temp_user_for_player.send_message(f"You investigate the {obj_data.get('display_name', 'object')} again, but find nothing new.")
+                                player_instance.has_taken_action_this_turn = True
+                            else:
+                                investigation_bonus = player_instance.get_skill_bonus("Investigation")
+                                d20_roll, roll_type_str = roll_d20_with_advantage_disadvantage()
+                                total_investigation_roll = d20_roll + investigation_bonus
+                                dc = obj_data.get("dc", 15)
+
+                                roll_msg = f"You investigate the {obj_data.get('display_name', 'object')} (Investigation: {d20_roll} + {investigation_bonus} = {total_investigation_roll} vs DC {dc})."
+                                if roll_type_str != "normal": roll_msg = roll_msg.replace("Investigation:", f"Investigation ({roll_type_str}):")
+                                temp_user_for_player.send_message(roll_msg)
+
+                                if total_investigation_roll >= dc:
+                                    success_text = obj_data.get("reveals_text", "You find something interesting!")
+                                    temp_user_for_player.send_message(f"{ANSI_GREEN}{success_text}{ANSI_RESET}")
+
+                                    item_id_revealed = obj_data.get("reveals_item_id")
+                                    if item_id_revealed:
+                                        item_qty = obj_data.get("reveals_item_quantity", 1)
+                                        item_blueprint_dict = PLAYER_ITEMS_DATA.get(item_id_revealed)
+                                        if item_blueprint_dict:
+                                            from server.core.content import Item # Local import
+                                            actual_blueprint = Item(**item_blueprint_dict)
+                                            item_instance_to_give = ItemInstance(actual_blueprint, item_qty)
+                                            player_instance.add_item_to_inventory(item_instance_to_give) # Assumes this method exists and sends its own message
+                                            temp_user_for_player.send_message(f"You add {item_instance_to_give.item_blueprint.name} (x{item_qty}) to your inventory.")
+                                        else:
+                                            temp_user_for_player.send_message(f"{ANSI_RED}Error: Revealed item '{item_id_revealed}' not found in item database.{ANSI_RESET}")
+
+                                    if loot_flag_id:
+                                        player_instance.triggered_room_flags.add(loot_flag_id)
+                                        # print(f"DEBUG: Player {player_instance.name} triggered loot flag: {loot_flag_id}")
+                                else:
+                                    temp_user_for_player.send_message(f"{ANSI_RED}You don't find anything unusual about the {obj_data.get('display_name', 'object')}.{ANSI_RESET}")
+                                player_instance.has_taken_action_this_turn = True
+                    responded = True
+
 
                 if not responded and command_word:
                     # print(f"[DEBUG_HANDLE_CLIENT] Unknown alive command: '{command_word}' for {player_instance.name}")

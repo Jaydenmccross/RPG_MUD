@@ -153,5 +153,15 @@
         "bonus_hp": 50
     },
     "properties": {"two_handed": false}
+  },
+  "tarnished_silver_ring": {
+    "name": "Tarnished Silver Ring",
+    "description": "A simple silver ring, darkened with age. It might polish up nicely.",
+    "type": "accessory",
+    "weight": 0.1,
+    "equip_slots": ["Finger 1", "Finger 2"],
+    "effects": {},
+    "properties": {},
+    "value": 5
   }
 }

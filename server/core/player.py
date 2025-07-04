@@ -9,6 +9,7 @@ CLASSES_DATA = {}
 RACES_DATA = {}
 ITEMS_DATA = {}
 SPELLS_DATA = {}
+CLASS_SPELL_LISTS_DATA = {}
 
 CASTER_SPELL_SLOTS_PROGRESSION = {
     "full": {
@@ -73,6 +74,13 @@ def load_game_data():
     except FileNotFoundError: SPELLS_DATA = {}; print("INFO: server/data/spells.json not found.")
     except Exception as e: print(f"ERROR loading spells.json: {e}")
 
+    global CLASS_SPELL_LISTS_DATA
+    try:
+        with open("server/data/class_spell_lists.json", "r") as f: CLASS_SPELL_LISTS_DATA = json.load(f)
+        print(f"INFO: Loaded spell lists for {len(CLASS_SPELL_LISTS_DATA)} classes from class_spell_lists.json.")
+    except FileNotFoundError: CLASS_SPELL_LISTS_DATA = {}; print("INFO: server/data/class_spell_lists.json not found.")
+    except Exception as e: print(f"ERROR loading class_spell_lists.json: {e}")
+
 
 class Player:
     EQUIPMENT_SLOT_HEAD = "Head"; EQUIPMENT_SLOT_NECK = "Neck"; EQUIPMENT_SLOT_CHEST = "Chest"
@@ -120,12 +128,13 @@ class Player:
     CONDITION_STUNNED = "Stunned"
     CONDITION_UNCONSCIOUS = "Unconscious"
     CONDITION_EXHAUSTION = "Exhaustion" # Often tracked in levels
+    CONDITION_HIDDEN = "Hidden" # For hide skill check
 
     ALL_CONDITIONS = [
         CONDITION_BLINDED, CONDITION_CHARMED, CONDITION_DEAFENED, CONDITION_FRIGHTENED,
         CONDITION_GRAPPLED, CONDITION_INCAPACITATED, CONDITION_INVISIBLE, CONDITION_PARALYZED,
         CONDITION_PETRIFIED, CONDITION_POISONED, CONDITION_PRONE, CONDITION_RESTRAINED,
-        CONDITION_STUNNED, CONDITION_UNCONSCIOUS, CONDITION_EXHAUSTION
+        CONDITION_STUNNED, CONDITION_UNCONSCIOUS, CONDITION_EXHAUSTION, CONDITION_HIDDEN
     ]
 
 
@@ -182,9 +191,38 @@ class Player:
         self.has_taken_action_this_turn = False
         self.has_taken_bonus_action_this_turn = False
         self.has_taken_reaction_this_turn = False # In a round
-        self.extra_attacks = 0 # Number of additional attacks when taking the Attack action
-        self.crit_range = [20] # Default critical hit range, e.g. [20] or [19, 20]
-        # self.active_effects is already defined in __init__
+
+        # Attributes to be managed by the new effects system
+        self.extra_attacks = 0
+        self.crit_range = [20]
+        self.bonus_hp_per_level = 0
+        self.static_ac_bonus = 0
+        self.conditional_ac_bonuses = []
+        self.roll_bonuses = {"attack": [], "damage": [], "skill_check": [], "saving_throw": [], "ability_check": []}
+        self.reroll_rules = []
+        self.action_granted_abilities = {}
+        self.passive_granted_abilities = {}
+
+        # For racial traits and similar effects
+        self.has_darkvision = False
+        self.darkvision_range = 0
+        self.advantage_rules = [] # Stores ADVANTAGE effect dicts
+        self.disadvantage_rules = [] # Stores DISADVANTAGE effect dicts
+        self.resistances = {} # e.g. {"fire": "Source of resistance"}
+        self.immunities = {} # e.g. {"poison": "Source of immunity"}
+        self.vulnerabilities = {} # e.g. {"cold": "Source of vulnerability"}
+        self.condition_immunities = set() # e.g. {"charmed"}
+
+        self.saving_throw_proficiencies = set()
+        self.pending_proficiency_choices = []
+        self.conditional_expertise_rules = []
+        self.pending_spell_choices = []
+        self.pending_feat_choices = []
+        self.draconic_ancestry_type = None
+        self.triggered_abilities_effects = []
+        self.on_critical_hit_effects = []
+        self.pending_feature_choices = []
+        self.triggered_room_flags = set() # For one-time room interactions like investigated objects
 
         self.spellcasting_ability = None
 
@@ -336,17 +374,68 @@ class Player:
         modifier = self.get_stat_modifier(ability_stat)
 
         is_proficient = skill_name in self.skill_proficiencies
-        prof_bonus = self.proficiency_bonus if is_proficient else 0
+        prof_bonus_multiplier = 1
+        is_proficient_base = skill_name in self.skill_proficiencies # Base proficiency check
 
-        total_bonus = modifier + prof_bonus
+        # Check for conditional expertise (like Stonecunning)
+        # This requires context for the check (e.g. "is this a History check about stonework?")
+        # For now, we can't fully implement the conditional part here without more arguments to get_skill_bonus
+        # Let's assume if a conditional expertise rule exists for the skill, we might apply it if a hypothetical
+        # 'context' argument matches the rule's condition.
+        # For Stonecunning: {"type": "EXPERTISE_CONDITIONAL", "skill": "History", "condition": "history_check_stonework_origin"}
+        for rule in self.conditional_expertise_rules:
+            if rule.get("skill") == skill_name:
+                # TODO: Add context checking here. If rule.get("condition") matches current context...
+                # For demonstration, let's assume if the rule exists for the skill, it applies for now.
+                # This will need refinement when skill checks are actually performed with context.
+                # print(f"DEBUG: Applying conditional expertise for {skill_name} due to rule: {rule}")
+                prof_bonus_multiplier = 2
+                is_proficient_base = True # Conditional expertise implies proficiency for that check
+                break
 
-        # Apply Remarkable Athlete for STR, DEX, CON checks if not already proficient
-        remarkable_athlete_feature = self.get_class_feature("Remarkable Athlete")
-        if remarkable_athlete_feature and remarkable_athlete_feature.get("effects", {}).get("remarkable_athlete"):
-            if ability_stat in ["STR", "DEX", "CON"] and not is_proficient:
-                remarkable_bonus = math.ceil(self.proficiency_bonus / 2)
-                total_bonus += remarkable_bonus
-                # print(f"DEBUG: Remarkable Athlete added +{remarkable_bonus} to {skill_name}")
+        # Check for standard Expertise (TODO: to be added as an effect type like "EXPERTISE", "skill": "Perception")
+        # if self.has_expertise_in_skill(skill_name): # Imaginary helper
+        #    prof_bonus_multiplier = 2
+        #    is_proficient_base = True
+
+
+        prof_bonus_value = self.proficiency_bonus if is_proficient_base else 0
+        total_bonus = modifier + (prof_bonus_value * prof_bonus_multiplier)
+
+        # Apply Remarkable Athlete for STR, DEX, CON checks if not already proficient (and no expertise applied)
+        # Remarkable Athlete adds half proficiency, it doesn't double it like expertise.
+        remarkable_athlete_feature_data = self.get_class_feature("Remarkable Athlete") # Checks processed abilities
+        if remarkable_athlete_feature_data and \
+           remarkable_athlete_feature_data.get("effects", {}).get("remarkable_athlete") and \
+           prof_bonus_multiplier == 1 and not is_proficient_base: # Only if not already proficient or expertised
+
+            # The effect in classes.json for Remarkable Athlete is just: "effects": {"remarkable_athlete": True}
+            # We need to ensure _apply_effect sets a flag or the logic here correctly identifies it.
+            # For now, assuming get_class_feature correctly finds the "Remarkable Athlete" feature if player has it.
+            # The specific effect definition {"remarkable_athlete": True} needs to be handled by _apply_effect
+            # perhaps by setting a flag like self.has_remarkable_athlete = True.
+            # Let's assume self.passive_granted_abilities['remarkable_athlete'] = True is set by _apply_effect.
+
+            if self.passive_granted_abilities.get("remarkable_athlete"):
+                 if ability_stat in ["STR", "DEX", "CON"]: # Check if it's a STR, DEX, or CON check
+                    remarkable_bonus = math.ceil(self.proficiency_bonus / 2)
+                    total_bonus += remarkable_bonus
+                    # print(f"DEBUG: Remarkable Athlete added +{remarkable_bonus} to {skill_name}")
+
+        # Apply BONUROLL effects for "skill_check" or "ability_check"
+        # This is generic; specific skill bonuses could be a separate list or have more context.
+        for effect_list_key in ["skill_check", "ability_check"]:
+            for effect in self.roll_bonuses.get(effect_list_key, []):
+                applies = True
+                if effect.get("skill") and effect.get("skill") != skill_name:
+                    applies = False
+                if effect.get("ability") and effect.get("ability") != ability_stat: # ability_stat is STR, DEX etc.
+                    applies = False
+                # Add other conditions if needed
+
+                if applies:
+                    total_bonus += effect.get("value", 0)
+                    # TODO: Handle dice bonuses if effect["dice"] exists
 
         return total_bonus
 
@@ -401,39 +490,119 @@ class Player:
         if self.level == 1: max_hp_val = hit_die + con_modifier
         else:
             avg_roll_plus_one = (hit_die // 2) + 1
-            hp_per_level = max(1, avg_roll_plus_one + con_modifier)
-            max_hp_val = (hit_die + con_modifier) + (hp_per_level * (self.level - 1))
-        base_race_data, sub_race_data = self._get_race_data_parts()
-        racial_traits = []
-        if base_race_data and base_race_data.get("traits"): racial_traits.extend(base_race_data.get("traits"))
-        if sub_race_data and sub_race_data.get("traits"): racial_traits.extend(sub_race_data.get("traits"))
-        for trait in racial_traits:
-            if trait.get("name") == "Dwarven Toughness": max_hp_val += self.level; break
+            hp_per_level_from_class = max(1, avg_roll_plus_one + con_modifier)
+            max_hp_val = (hit_die + con_modifier) + (hp_per_level_from_class * (self.level - 1))
+
+        # Add bonus HP per level from effects (e.g., Dwarven Toughness)
+        max_hp_val += self.bonus_hp_per_level * self.level
+
+        # Add flat bonus HP from items/effects (this part might be redundant if recalculate_all_stats handles item effects directly)
         for item_data in self.equipment.values():
-            if item_data: max_hp_val += item_data.get("effects", {}).get("bonus_hp", 0)
+            if item_data: max_hp_val += item_data.get("effects", {}).get("bonus_hp", 0) # Keep for now, might be refactored
+
+        # TODO: Add flat BONMAX_HP from parsed effects if any.
+        # Example: if an effect {"type": "BONUS_MAX_HP", "value": 10} is active.
+        # This would likely be handled in recalculate_all_stats by applying to a self.bonus_max_hp_flat attribute,
+        # and then added here: max_hp_val += self.bonus_max_hp_flat
+
         return max(1, max_hp_val)
 
     def calculate_ac(self):
-        dex_modifier = self.get_stat_modifier("DEX"); calculated_ac = 10 + dex_modifier
-        equipped_armor_data = self.equipment.get(Player.EQUIPMENT_SLOT_CHEST)
-        if equipped_armor_data:
-            props = equipped_armor_data.get("properties", {}); armor_type = props.get("armor_type")
-            base_ac_value = props.get("base_ac_value", 0)
-            if armor_type == "light": calculated_ac = base_ac_value + dex_modifier
-            elif armor_type == "medium": calculated_ac = base_ac_value + min(dex_modifier, props.get("dex_cap_bonus", 2))
-            elif armor_type == "heavy": calculated_ac = base_ac_value
+        dex_modifier = self.get_stat_modifier("DEX")
+        base_ac_value_from_armor = 10 + dex_modifier # Unarmored AC by default
 
-        # Apply Defense fighting style bonus
-        if "Defense" in self.fighting_styles and equipped_armor_data: # Must be wearing armor
-            calculated_ac += 1
+        equipped_armor_item_data = self.equipment.get(Player.EQUIPMENT_SLOT_CHEST)
+        is_wearing_armor = equipped_armor_item_data is not None
 
-        total_bonus_ac_from_effects = sum(item_data.get("effects", {}).get("bonus_ac", 0) for item_data in self.equipment.values() if item_data)
-        calculated_ac += total_bonus_ac_from_effects
+        if equipped_armor_item_data:
+            props = equipped_armor_item_data.get("properties", {})
+            armor_type = props.get("armor_type")
+            armor_base_ac = props.get("base_ac_value", 0)
+
+            if armor_type == "light":
+                base_ac_value_from_armor = armor_base_ac + dex_modifier
+            elif armor_type == "medium":
+                base_ac_value_from_armor = armor_base_ac + min(dex_modifier, props.get("dex_cap_bonus", 2))
+            elif armor_type == "heavy":
+                base_ac_value_from_armor = armor_base_ac
+            # Note: Unarmored Defense (Barbarian/Monk) will be handled by effects setting base_ac_value_from_armor too.
+
+        calculated_ac = base_ac_value_from_armor
+
+        # Add static AC bonuses from effects (e.g. Ring of Protection, or Defense fighting style if always on)
+        calculated_ac += self.static_ac_bonus
+
+        # Add conditional AC bonuses (like Defense fighting style if condition is "is_wearing_armor")
+        for ac_bonus_effect in self.conditional_ac_bonuses:
+            condition_met = False
+            if ac_bonus_effect.get("condition") == "is_wearing_armor" and is_wearing_armor:
+                condition_met = True
+            # Add other conditions here if needed
+
+            if condition_met:
+                calculated_ac += ac_bonus_effect.get("value", 0)
+
+        # Add AC from equipped shield (shields usually provide a direct AC bonus in their item effects)
+        shield = self.equipment.get(Player.EQUIPMENT_SLOT_WEAPON_OFF)
+        if shield and shield.get("properties", {}).get("armor_type") == "shield":
+            calculated_ac += shield.get("effects", {}).get("bonus_ac", 0) # Assuming shield's bonus_ac is flat
+
+        # TODO: Consider if item effects (like Ring of Protection's bonus_ac) should be handled by the generic
+        # static_ac_bonus accumulation in recalculate_all_stats, or if they are summed up here from equipment.
+        # For now, static_ac_bonus is for class/race features, and item bonuses are added separately.
+        # This might need consolidation.
+        # Example: Ring of Protection might have {"type": "BONUS_AC", "value": 1} in its item effects.
+        # If that's parsed into self.static_ac_bonus, then no need to sum equipment here.
+        # If not, then this existing sum is needed:
+        # total_bonus_ac_from_non_armor_item_effects = sum(
+        #     item_data.get("effects", {}).get("bonus_ac", 0)
+        #     for slot, item_data in self.equipment.items()
+        #     if item_data and slot != Player.EQUIPMENT_SLOT_CHEST and
+        #        (slot != Player.EQUIPMENT_SLOT_WEAPON_OFF or item_data.get("properties", {}).get("armor_type") != "shield")
+        # )
+        # calculated_ac += total_bonus_ac_from_non_armor_item_effects
+        # For now, let's assume recalculate_all_stats will populate self.static_ac_bonus correctly from all sources.
+
         return calculated_ac
 
-    def get_attack_bonus(self, ability_stat_name, is_proficient_with_weapon=True):
+    def get_attack_bonus(self, ability_stat_name, is_proficient_with_weapon=True, weapon_category=None):
         prof_bonus = self.proficiency_bonus if is_proficient_with_weapon else 0
-        return self.get_stat_modifier(ability_stat_name) + prof_bonus
+        base_attack_bonus = self.get_stat_modifier(ability_stat_name) + prof_bonus
+
+        # Apply BONUROLL effects of type "attack"
+        for effect in self.roll_bonuses.get("attack", []):
+            applies = True
+            if "weapon_category" in effect and effect["weapon_category"] != weapon_category:
+                applies = False
+            # Add other conditions like "weapon_type", "spell_school" etc. if needed
+
+            if applies:
+                base_attack_bonus += effect.get("value", 0)
+                # TODO: Handle dice bonuses if effect["dice"] exists
+
+        return base_attack_bonus
+
+    def get_damage_bonus(self, ability_stat_name, weapon_category=None, is_one_handed_melee_no_other_weapon=False, is_two_handed_or_versatile_melee_weapon=False):
+        # Standard ability modifier to damage (for weapon attacks)
+        # For spells, this is usually handled differently (spell might specify if mod is added)
+        base_damage_bonus = self.get_stat_modifier(ability_stat_name)
+
+        # Apply BONUROLL effects of type "damage"
+        for effect in self.roll_bonuses.get("damage", []):
+            applies = True
+            if "weapon_category" in effect and effect["weapon_category"] != weapon_category:
+                applies = False
+            if "condition" in effect:
+                if effect["condition"] == "one_handed_melee_no_other_weapon" and not is_one_handed_melee_no_other_weapon:
+                    applies = False
+                # Add other conditions for damage bonuses
+
+            if applies:
+                base_damage_bonus += effect.get("value", 0)
+                # TODO: Handle dice bonuses if effect["dice"] exists
+
+        return base_damage_bonus
+
 
     def get_saving_throw_bonus(self, ability_stat_name):
         if not CLASSES_DATA: return self.get_stat_modifier(ability_stat_name)
@@ -579,25 +748,25 @@ class Player:
             return list(available_spell_ids)
 
         # For Cleric, Druid, Paladin, Artificer - they have access to their full class spell list.
-        # This requires defining "class_spell_lists" in classes.json or spells.json.
-        # For now, this part is a TODO, as it requires significant data entry for class spell lists.
-        # Placeholder: return a few known spells if they are one of these classes for testing.
-        if self.player_class_name in ["Cleric", "Druid", "Paladin", "Artificer"]:
-            # TODO: Implement actual class spell list lookup.
-            # This is a simplified version for now:
-            temp_available = set()
-            for spell_id, spell_data in SPELLS_DATA.items():
-                # Crude filter: if spell is appropriate level for a caster of this type
-                if spell_data.get("level", 0) > 0: # Non-cantrips
-                     # Check if player has slots for this spell level
-                    if self.max_spell_slots.get(spell_data["level"], 0) > 0:
-                        # A more robust check would be if spell_id is in class_data.get("class_spell_list", [])
-                        # For now, just add a few for testing if SPELLS_DATA contains them:
-                        if spell_id in ["magic_missile", "healing_word", "bless", "burning_hands"]:
-                             temp_available.add(spell_id)
-            return list(temp_available)
+        if self.player_class_name in CLASS_SPELL_LISTS_DATA and \
+           self.player_class_name in ["Cleric", "Druid", "Paladin", "Artificer"]:
 
-        return [] # Default for classes that don't prepare this way (Bards, Sorcs etc.)
+            class_spell_list_ids = CLASS_SPELL_LISTS_DATA.get(self.player_class_name, [])
+            max_castable_level = 0
+            for i in range(1, 10): # Spell levels 1-9
+                if self.max_spell_slots.get(i, 0) > 0:
+                    max_castable_level = i
+                else: # No higher slots
+                    break
+
+            for spell_id in class_spell_list_ids:
+                spell_data = SPELLS_DATA.get(spell_id)
+                if spell_data and spell_data.get("level", 0) > 0 and \
+                   spell_data.get("level", 0) <= max_castable_level:
+                    available_spell_ids.add(spell_id)
+            return list(available_spell_ids)
+
+        return [] # Default for classes that don't prepare this way (Bards, Sorcs etc.) or if list not found
 
     def prepare_spell(self, spell_id):
         if not self.can_prepare_spells():
@@ -648,58 +817,303 @@ class Player:
         return spell_id in self.prepared_spells
 
 
+    def _apply_effect(self, effect_data, feature_name="Unknown Feature"):
+        """Helper function to apply a single effect dictionary to the player."""
+        effect_type = effect_data.get("type")
+        notes = effect_data.get("notes", "") # For debugging or richer descriptions later
+
+        if effect_type == "SET_EXTRA_ATTACKS":
+            self.extra_attacks = max(self.extra_attacks, effect_data.get("value", 0))
+        elif effect_type == "SET_CRITICAL_RANGE":
+            new_crit_range = effect_data.get("range", [20])
+            if new_crit_range and new_crit_range[0] < self.crit_range[0]: # Assumes lower is better
+                self.crit_range = new_crit_range
+        elif effect_type == "BONUS_HP_PER_LEVEL":
+            self.bonus_hp_per_level += effect_data.get("value", 0)
+        elif effect_type == "BONUS_AC":
+            if "condition" in effect_data:
+                self.conditional_ac_bonuses.append(effect_data.copy())
+            else:
+                self.static_ac_bonus += effect_data.get("value", 0)
+        elif effect_type == "BONUS_ROLL":
+            roll_type = effect_data.get("roll_type") # "attack", "damage", "skill_check", "saving_throw", "ability_check"
+            if roll_type in self.roll_bonuses:
+                self.roll_bonuses[roll_type].append(effect_data.copy())
+            else:
+                print(f"Warning: Unknown roll_type '{roll_type}' in BONUROLL effect from {feature_name} ({notes})")
+        elif effect_type == "REROLL_DICE" or effect_type == "REROLL_DICE_SPECIFIC": # Combined handler
+            self.reroll_rules.append(effect_data.copy())
+        elif effect_type == "GRANT_ACTION_ABILITY":
+            min_level = effect_data.get("level_requirement", 0)
+            if self.level >= min_level:
+                ability_name = effect_data.get("name")
+                if ability_name:
+                    self.action_granted_abilities[ability_name] = effect_data.copy()
+                else:
+                    print(f"Warning: GRANT_ACTION_ABILITY missing name from {feature_name} ({notes})")
+            # else: feature not granted yet due to level requirement
+        elif effect_type == "ENABLE_ABILITY_MOD_OFFHAND_DAMAGE": # For Two-Weapon Fighting Style
+            # This might be a flag the combat system checks, or influences get_damage_bonus logic for offhand.
+            # For now, let's add it to passive_granted_abilities.
+            self.passive_granted_abilities["two_weapon_fighting_style_active"] = True
+        elif effect_type == "GRANT_REACTION_ABILITY": # E.g. Protection Fighting Style
+             ability_name = effect_data.get("name")
+             if ability_name:
+                self.action_granted_abilities[ability_name] = effect_data.copy() # Reactions are still abilities
+             else:
+                print(f"Warning: GRANT_REACTION_ABILITY missing name from {feature_name} ({notes})")
+
+        # TODO: Add more effect types here:
+        # GRANT_PROFICIENCY (skill, weapon, armor, tool, saving_throw)
+        # EXPERTISE
+        # RESISTANCE, IMMUNITY, VULNERABILITY
+        # CONDITION_IMMUNITY
+        # UNARMORED_DEFENSE
+        elif effect_type == "SET_DARKVISION":
+            self.has_darkvision = True
+            self.darkvision_range = max(self.darkvision_range, effect_data.get("range", 0))
+        elif effect_type == "ADVANTAGE":
+            self.advantage_rules.append(effect_data.copy())
+        elif effect_type == "DISADVANTAGE": # Assuming we might add this type
+            self.disadvantage_rules.append(effect_data.copy())
+        elif effect_type == "RESISTANCE":
+            damage_type_key = effect_data.get("damage_type")
+            ancestry_key_ref = effect_data.get("damage_type_from_ancestry")
+
+            if ancestry_key_ref and self.draconic_ancestry_type:
+                # Find the chosen ancestry details
+                ancestry_options = RACES_DATA.get("Dragonborn", {}).get("draconic_ancestry_options", [])
+                chosen_ancestry_info = next((opt for opt in ancestry_options if opt.get("choice_value") == self.draconic_ancestry_type), None)
+                if chosen_ancestry_info:
+                    damage_type_key = chosen_ancestry_info.get("damage_type")
+                else:
+                    print(f"Warning: Could not find ancestry details for '{self.draconic_ancestry_type}' to determine resistance type.")
+
+            if damage_type_key:
+                self.resistances[damage_type_key] = effect_data.get("notes", True)
+            elif not ancestry_key_ref: # Only print warning if it wasn't meant to be from ancestry
+                print(f"Warning: RESISTANCE effect missing damage_type from {feature_name} ({notes})")
+
+        elif effect_type == "IMMUNITY": # Assuming we might add this type
+            damage_type = effect_data.get("damage_type")
+            if damage_type:
+                self.immunities[damage_type] = effect_data.get("notes", True)
+        elif effect_type == "VULNERABILITY": # Assuming we might add this type
+            damage_type = effect_data.get("damage_type")
+            if damage_type:
+                self.vulnerabilities[damage_type] = effect_data.get("notes", True)
+        elif effect_type == "CONDITION_IMMUNITY":
+            condition = effect_data.get("condition")
+            if condition:
+                self.condition_immunities.add(condition)
+        elif effect_type == "GRANT_PROFICIENCY":
+            category = effect_data.get("category")
+            name = effect_data.get("name")
+            if not category or not name:
+                print(f"Warning: GRANT_PROFICIENCY missing category or name from {feature_name} ({notes})")
+                return
+            if category == "skill": self.skill_proficiencies.add(name)
+            elif category == "weapon": self.weapon_proficiencies.add(name) # Assumes individual weapon names
+            elif category == "armor": self.armor_proficiencies.add(name)   # Assumes individual armor names
+            elif category == "tool": self.tool_proficiencies.add(name)
+            elif category == "saving_throw": self.saving_throw_proficiencies.add(name.upper())
+            elif category == "weapon_group": # e.g. "simple", "martial"
+                # This would require expanding self.weapon_proficiencies to understand groups
+                # or having a predefined list of weapons per group. For now, just add the group name.
+                self.weapon_proficiencies.add(name)
+            elif category == "armor_group": # e.g. "light", "medium", "heavy", "shields"
+                self.armor_proficiencies.add(name)
+            else: print(f"Warning: Unknown proficiency category '{category}' in GRANT_PROFICIENCY from {feature_name}")
+        elif effect_type == "GRANT_PROFICIENCY_CHOICE":
+            # Store the choice request. Actual choice resolution will happen elsewhere (e.g. char creation).
+            self.pending_proficiency_choices.append(effect_data.copy())
+        elif effect_type == "EXPERTISE_CONDITIONAL":
+            self.conditional_expertise_rules.append(effect_data.copy())
+        elif effect_type == "GRANT_SPELL_CHOICE":
+            self.pending_spell_choices.append(effect_data.copy())
+        elif effect_type == "SET_BASE_SPEED":
+            self.base_speed = effect_data.get("value", self.base_speed)
+        elif effect_type == "CUSTOM_MECHANIC":
+            custom_name = effect_data.get("name")
+            if custom_name:
+                self.passive_granted_abilities[custom_name] = effect_data.copy()
+            else:
+                print(f"Warning: CUSTOM_MECHANIC missing name from {feature_name} ({notes})")
+        elif effect_type == "GRANT_FEAT_CHOICE":
+            self.pending_feat_choices.append(effect_data.copy())
+        elif effect_type == "GRANT_SPELL":
+            spell_id = effect_data.get("spell_id")
+            if spell_id:
+                self.known_spells.add(spell_id)
+                # TODO: Handle spellcasting_ability_override if present, potentially storing it in
+                # a dict like self.spell_specific_casting_stats[spell_id] = {"ability": "INT"}
+                # For now, granted spells will use the player's default class spellcasting ability.
+            else:
+                print(f"Warning: GRANT_SPELL effect missing spell_id from {feature_name} ({notes})")
+        elif effect_type == "PASSIVE_ABILITY":
+            ability_name = effect_data.get("name")
+            if ability_name:
+                # Store the whole effect_data dict as it might contain details needed by other systems
+                self.passive_granted_abilities[ability_name] = effect_data.copy()
+            else:
+                print(f"Warning: PASSIVE_ABILITY missing name from {feature_name} ({notes})")
+        elif effect_type == "GRANT_CHOICE": # For feature choices like Fighting Style
+            self.pending_feature_choices.append(effect_data.copy())
+        elif effect_type == "TRIGGERED_ABILITY":
+            self.triggered_abilities_effects.append(effect_data.copy())
+        elif effect_type == "ADD_CRIT_DICE":
+            self.on_critical_hit_effects.append(effect_data.copy())
+        # etc.
+        else:
+            print(f"Warning: Unknown effect type '{effect_type}' from {feature_name} ({notes}). Effect data: {effect_data}")
+
+
     def recalculate_all_stats(self, full_heal=False):
         if not (CLASSES_DATA and RACES_DATA and ITEMS_DATA): load_game_data()
 
-        # Reset relevant stats that are derived from features or level
+        # Reset effect-derived attributes to defaults or empty
         self.extra_attacks = 0
-        self.crit_range = [20] # Reset to default before applying features
-        # Potentially reset other things here if they are solely feature-derived
+        self.crit_range = [20]
+        self.bonus_hp_per_level = 0
+        self.static_ac_bonus = 0
+        self.conditional_ac_bonuses = []
+        self.roll_bonuses = {"attack": [], "damage": [], "skill_check": [], "saving_throw": [], "ability_check": []}
+        self.reroll_rules = []
+        self.action_granted_abilities = {}
+        self.passive_granted_abilities = {}
+        self.fighting_styles = set()
 
-        self.proficiency_bonus = self.calculate_proficiency_bonus()
-        old_max_hp = self.max_hp; self.max_hp = self.calculate_max_hp()
-        if full_heal or self.current_hp <= 0: self.current_hp = self.max_hp
-        else:
-            hp_increase = self.max_hp - old_max_hp; self.current_hp = min(self.max_hp, self.current_hp + hp_increase)
-            if self.current_hp <= 0 and self.max_hp > 0: self.current_hp = 1
-        self.ac = self.calculate_ac()
+        # Reset racial/general effect attributes
+        self.has_darkvision = False
+        self.darkvision_range = 0
+        self.advantage_rules = []
+        self.disadvantage_rules = []
+        self.resistances = {}
+        self.immunities = {}
+        self.vulnerabilities = {}
+        self.condition_immunities = set()
 
-        self._initialize_spell_slots() # Initialize/update spell slots
+        # Reset proficiencies that can be granted by effects (base class profs are added directly in __init__)
+        # However, if class features can grant more profs, they should also be reset here and reapplied.
+        # For now, assuming __init__ handles initial set and effects add to them.
+        # Let's clear and rebuild all profs here for consistency.
+        self.skill_proficiencies.clear()
+        self.weapon_proficiencies.clear()
+        self.armor_proficiencies.clear()
+        self.tool_proficiencies.clear()
+        self.saving_throw_proficiencies.clear() # New set for saving throw profs from effects
 
-        # Apply features that modify stats like extra_attacks
+        self.pending_proficiency_choices = []
+        self.conditional_expertise_rules = []
+        self.pending_spell_choices = []
+        self.pending_feat_choices = []
+        self.pending_feature_choices = [] # For GRANT_CHOICE like fighting styles
+        self.triggered_abilities_effects = []
+        self.on_critical_hit_effects = []
+
+
+        # --- Apply Base Class Proficiencies (before other effects might modify/add to them) ---
+        # This ensures base proficiencies are always there even if no explicit GRANT_PROFICIENCY effect exists for them.
+        # These were originally set in __init__ but are better handled here for centralization.
+        class_data_for_base_profs = CLASSES_DATA.get(self.player_class_name, {})
+        for skill_prof in class_data_for_base_profs.get("skill_proficiencies", []): # Default skills for class
+            self.skill_proficiencies.add(skill_prof)
+        for armor_prof in class_data_for_base_profs.get("armor_proficiencies", []):
+            self.armor_proficiencies.add(armor_prof)
+        for weapon_prof in class_data_for_base_profs.get("weapon_proficiencies", []):
+            self.weapon_proficiencies.add(weapon_prof)
+        for tool_prof in class_data_for_base_profs.get("tool_proficiencies", []):
+            self.tool_proficiencies.add(tool_prof)
+        for st_prof in class_data_for_base_profs.get("saving_throw_proficiencies", []): # From class definition
+            self.saving_throw_proficiencies.add(st_prof.upper())
+
+
+        # --- Apply Racial Effects ---
+        base_race_data, sub_race_data = self._get_race_data_parts()
+        if base_race_data and "traits" in base_race_data:
+            for trait in base_race_data["traits"]:
+                if "effects" in trait and isinstance(trait["effects"], list):
+                    for effect_data in trait["effects"]:
+                        self._apply_effect(effect_data, feature_name=trait.get("name", "Unknown Racial Trait"))
+        if sub_race_data and "traits" in sub_race_data:
+            for trait in sub_race_data["traits"]:
+                if "effects" in trait and isinstance(trait["effects"], list):
+                    for effect_data in trait["effects"]:
+                        self._apply_effect(effect_data, feature_name=trait.get("name", "Unknown Subrace Trait"))
+
+        # --- Apply Class and Subclass Feature Effects ---
         class_data = CLASSES_DATA.get(self.player_class_name)
-        if class_data and "features_by_level" in class_data:
+        if class_data:
+            # Collect all applicable features (base class + subclass)
+            all_features_to_apply = []
             for level_int in range(1, self.level + 1):
                 level_str = str(level_int)
-                features_at_level = class_data["features_by_level"].get(level_str, [])
-                for feature_data in features_at_level:
-                    effects = feature_data.get("effects")
-                    if effects:
-                        if "set_extra_attacks" in effects:
-                            self.extra_attacks = max(self.extra_attacks, effects["set_extra_attacks"])
-                        if "set_crit_range" in effects:
-                            new_crit_range = effects["set_crit_range"]
-                            # Assuming lower numbers are better for crit range start
-                            if new_crit_range and new_crit_range[0] < self.crit_range[0]:
-                                self.crit_range = new_crit_range
+                # Base class features
+                features_at_level = class_data.get("features_by_level", {}).get(level_str, [])
+                all_features_to_apply.extend(features_at_level)
 
-            # Process subclass features if a subclass is chosen and exists
-            if self.subclass_name and "subclasses" in class_data and \
-               self.subclass_name in class_data["subclasses"]:
-                subclass_data = class_data["subclasses"][self.subclass_name]
-                if "features_by_level" in subclass_data:
-                    for level_int in range(1, self.level + 1):
-                        level_str = str(level_int)
-                        sub_features_at_level = subclass_data["features_by_level"].get(level_str, [])
-                        for sub_feature_data in sub_features_at_level:
-                            effects = sub_feature_data.get("effects")
-                            if effects:
-                                if "set_extra_attacks" in effects: # Unlikely for subclass, but for consistency
-                                    self.extra_attacks = max(self.extra_attacks, effects["set_extra_attacks"])
-                                if "set_crit_range" in effects:
-                                    new_crit_range = effects["set_crit_range"]
-                                    if new_crit_range and new_crit_range[0] < self.crit_range[0]:
-                                        self.crit_range = new_crit_range
+                # Subclass features
+                if self.subclass_name and "subclasses" in class_data and self.subclass_name in class_data["subclasses"]:
+                    subclass_data = class_data["subclasses"][self.subclass_name]
+                    sub_features_at_level = subclass_data.get("features_by_level", {}).get(level_str, [])
+                    all_features_to_apply.extend(sub_features_at_level)
+
+            # Process collected features
+            # Handle choices like Fighting Style first if they grant other effects
+            for feature_data in all_features_to_apply:
+                feature_name = feature_data.get("name", "Unknown Feature")
+                if feature_data.get("choices_feature_type") == "fighting_style":
+                    # Assume player.chosen_fighting_style is set during character creation or level up choice
+                    chosen_style_name = getattr(self, 'chosen_fighting_style', None) # TODO: Need to store this choice
+                    if chosen_style_name:
+                        for choice in feature_data.get("available_choices", []):
+                            if choice.get("name") == chosen_style_name:
+                                self.fighting_styles.add(chosen_style_name) # Add to set of known styles
+                                if "effects" in choice and isinstance(choice["effects"], list):
+                                    for effect_data in choice["effects"]:
+                                        self._apply_effect(effect_data, feature_name=f"{feature_name}: {chosen_style_name}")
+                                break # Found and applied chosen style
+
+                # Apply direct effects of the feature itself
+                if "effects" in feature_data and isinstance(feature_data["effects"], list):
+                    # Handle overrides: if this feature overrides another, its effects might replace/modify
+                    # For now, simple application; overrides might need smarter logic in _apply_effect
+                    # or by processing features in a specific order.
+                    # The get_class_feature handles overrides for ability usage, but recalculate_all_stats
+                    # needs to ensure the *correct version* of an effect is applied if overridden.
+                    # This simple loop might apply older versions then newer ones.
+                    # A better way: use get_class_feature for each effect type to ensure only the highest level override applies.
+                    # For now, this linear application will mostly work if overrides fully replace prior values (e.g. SET_EXTRA_ATTACKS)
+                    for effect_data in feature_data["effects"]:
+                         self._apply_effect(effect_data, feature_name=feature_name)
+
+        # --- Apply Item Effects ---
+        # TODO: Iterate through self.equipment. For each item, if it has an "effects" list,
+        # call self._apply_effect(effect_data_from_item). This needs care to avoid double-applying
+        # things like AC bonuses if calculate_ac already handles them from items.
+        # For now, focusing on class/race effects.
+
+        # --- Recalculate Core Derived Stats using the now-populated effect attributes ---
+        self.proficiency_bonus = self.calculate_proficiency_bonus()
+
+        old_max_hp = self.max_hp
+        self.max_hp = self.calculate_max_hp() # Uses self.bonus_hp_per_level now
+
+        if full_heal or self.current_hp <= 0:
+            self.current_hp = self.max_hp
+        else:
+            hp_increase = self.max_hp - old_max_hp
+            self.current_hp = min(self.max_hp, self.current_hp + hp_increase)
+            if self.current_hp <= 0 and self.max_hp > 0: # Ensure not dead if HP increased above 0
+                self.current_hp = 1
+
+        self.ac = self.calculate_ac() # Uses self.static_ac_bonus and self.conditional_ac_bonuses
+
+        self._initialize_spell_slots() # Initialize/update spell slots (mostly independent of effects list for now)
+
+        # print(f"DEBUG Player {self.name} recalculate_all_stats complete. extra_attacks: {self.extra_attacks}, crit_range: {self.crit_range}, bonus_hp_per_level: {self.bonus_hp_per_level}, static_ac_bonus: {self.static_ac_bonus}")
+        # print(f"DEBUG conditional_ac_bonuses: {self.conditional_ac_bonuses}")
+        # print(f"DEBUG roll_bonuses (attack): {self.roll_bonuses['attack']}")
 
 
     def add_xp(self, amount):
@@ -725,68 +1139,84 @@ class Player:
              self.user.send_message(f"{ANSI_GREEN}Ding! You reached level {self.level}!{ANSI_RESET}")
 
     def get_class_feature(self, feature_name):
+        """
+        Retrieves the definition of a class feature.
+        This can be from the raw class JSON or from the processed action_granted_abilities.
+        Priority is given to action_granted_abilities if the feature is found there,
+        as it represents the processed form of the ability.
+        """
         if not CLASSES_DATA: load_game_data()
+
+        # Check processed abilities first (populated by recalculate_all_stats)
+        if feature_name in self.action_granted_abilities:
+            # The structure in action_granted_abilities IS the feature data for usage.
+            # It should contain "uses", "refresh_on", "effect_details" etc.
+            # Ensure it has a "name" field if not already the key.
+            granted_ability_data = self.action_granted_abilities[feature_name].copy()
+            granted_ability_data.setdefault("name", feature_name) # Ensure name is present
+            # Add a marker to indicate it's from the processed list, if needed for debugging.
+            granted_ability_data["source_type"] = "action_granted_ability"
+            return granted_ability_data
+
+        # Fallback to searching raw class/subclass JSON (original method)
+        # This part is important for features that aren't "granted abilities" via the effect system,
+        # or for looking up the original definition if needed.
         class_data = CLASSES_DATA.get(self.player_class_name)
         if not class_data: return None
 
-        best_feature_match = None
+        best_raw_feature_match = None
 
         for level_int in range(1, self.level + 1):
             level_str = str(level_int)
             features_at_level = class_data.get("features_by_level", {}).get(level_str, [])
-            for feature_data in features_at_level:
-                # Check if this feature definition is for the ability_name itself
-                # or if it overrides the ability_name we're looking for.
-                is_direct_match = feature_data.get("name") == feature_name
-                is_override_match = feature_data.get("override_feature_name") == feature_name
+            for raw_feature_data_item in features_at_level:
+                is_direct_match = raw_feature_data_item.get("name") == feature_name
+                is_override_match = raw_feature_data_item.get("override_feature_name") == feature_name
 
                 if is_direct_match or is_override_match:
-                    # If it's an override, or if it's a direct match and we haven't found an override yet,
-                    # or if this feature is at a higher level than the last one we found.
-                    if best_feature_match is None or \
+                    if best_raw_feature_match is None or \
                        is_override_match or \
-                       (is_direct_match and not best_feature_match.get("override_feature_name")) or \
-                       level_int > best_feature_match.get("granted_at_level", 0): # Assumes we add 'granted_at_level' if needed
+                       (is_direct_match and not best_raw_feature_match.get("override_feature_name")) or \
+                       level_int > best_raw_feature_match.get("granted_at_level", 0):
 
-                        # Store the level it was granted at, in case of multiple non-overriding versions at different levels (though unusual)
-                        # For overrides, this ensures the highest level override is taken.
-                        temp_feature_copy = feature_data.copy()
-                        temp_feature_copy["granted_at_level"] = level_int
-                        # If it's an override, we care about the original name for usage tracking, but use new stats
+                        temp_copy = raw_feature_data_item.copy()
+                        temp_copy["granted_at_level"] = level_int
                         if is_override_match:
-                             temp_feature_copy["original_name_for_tracking"] = feature_name
-                        best_feature_match = temp_feature_copy
+                             temp_copy["original_name_for_tracking"] = feature_name
+                        best_raw_feature_match = temp_copy
 
-        # Also check subclass features if a subclass is chosen
+        # Subclass check for raw features
         if self.subclass_name and class_data and "subclasses" in class_data and \
            self.subclass_name in class_data["subclasses"]:
-            subclass_data = class_data["subclasses"][self.subclass_name]
-            if "features_by_level" in subclass_data:
+            subclass_data_raw = class_data["subclasses"][self.subclass_name]
+            if "features_by_level" in subclass_data_raw:
                 for level_int in range(1, self.level + 1):
                     level_str = str(level_int)
-                    sub_features_at_level = subclass_data["features_by_level"].get(level_str, [])
-                    for sub_feature_data in sub_features_at_level:
-                        is_direct_match = sub_feature_data.get("name") == feature_name
-                        is_override_match = sub_feature_data.get("override_feature_name") == feature_name
-
+                    sub_features_at_level_raw = subclass_data_raw["features_by_level"].get(level_str, [])
+                    for sub_feature_item_raw in sub_features_at_level_raw:
+                        is_direct_match = sub_feature_item_raw.get("name") == feature_name
+                        is_override_match = sub_feature_item_raw.get("override_feature_name") == feature_name
                         if is_direct_match or is_override_match:
-                            if best_feature_match is None or \
+                            if best_raw_feature_match is None or \
                                is_override_match or \
-                               (is_direct_match and not best_feature_match.get("override_feature_name")) or \
-                               level_int > best_feature_match.get("granted_at_level", 0):
+                               (is_direct_match and not best_raw_feature_match.get("override_feature_name")) or \
+                               level_int > best_raw_feature_match.get("granted_at_level", 0):
 
-                                temp_feature_copy = sub_feature_data.copy()
-                                temp_feature_copy["granted_at_level"] = level_int
+                                temp_copy = sub_feature_item_raw.copy()
+                                temp_copy["granted_at_level"] = level_int
                                 if is_override_match:
-                                    temp_feature_copy["original_name_for_tracking"] = feature_name
-                                best_feature_match = temp_feature_copy
+                                    temp_copy["original_name_for_tracking"] = feature_name
+                                best_raw_feature_match = temp_copy
 
-        return best_feature_match
+        if best_raw_feature_match:
+             best_raw_feature_match["source_type"] = "raw_class_json" # Mark source for clarity
+        return best_raw_feature_match
+
 
     def can_use_ability(self, ability_name):
         feature_data = self.get_class_feature(ability_name)
         if not feature_data:
-            # print(f"DEBUG: No feature data found for {ability_name}")
+            # print(f"DEBUG: No feature data found for {ability_name} in can_use_ability")
             return False
 
         max_uses = feature_data.get("uses")
@@ -953,6 +1383,11 @@ class Player:
 
     # --- Condition Management ---
     def add_condition(self, condition_name, duration_rounds=None, source=None, save_dc=None, save_ends=False, save_stat=None):
+        if condition_name in self.condition_immunities:
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_GREEN}You are immune to the {condition_name} condition!{ANSI_RESET}")
+            return False # Immune to the condition
+
         if condition_name not in Player.ALL_CONDITIONS:
             print(f"Warning: Unknown condition '{condition_name}' cannot be added to {self.name}.")
             return False
@@ -1095,65 +1530,99 @@ class Player:
 
 
     def use_action_surge(self):
-        if self.player_class_name != "Fighter":
+        feature_name = "Action Surge"
+        ability_data = self.action_granted_abilities.get(feature_name)
+
+        if not ability_data:
+            return "You do not have the Action Surge ability prepared/active."
+
+        if self.player_class_name != "Fighter": # Class check
             return "Only Fighters can use Action Surge."
-        if self.level < 2:
-            return "You must be at least level 2 to use Action Surge."
+        # Level check could be implicitly handled by when GRANT_ACTION_ABILITY is given,
+        # but an explicit check based on self.level vs a potential ability_data.get("min_level", 0)
+        # could be added if features are granted before level in JSON for some reason.
+        # For now, assume recalculate_all_stats only grants it at appropriate levels.
 
-        feature_name = "Action Surge" # Base name for tracking
         if not self.can_use_ability(feature_name):
-            return "You cannot use Action Surge right now (no uses left or already active)."
+            return "You cannot use Action Surge right now (no uses left or other restriction)."
 
-        if self.has_action_surge_active: # Should not happen if can_use_ability is correct, but good check.
+        if self.has_action_surge_active: # Prevent using if already active this turn
              return "You have already gained an action from Action Surge this turn."
 
-        if not self.mark_ability_used(feature_name):
-            # This case should ideally be caught by can_use_ability
-            return "Failed to mark Action Surge as used."
+        effect_details = ability_data.get("effect_details", {})
+        if effect_details.get("type") != "GAIN_EXTRA_ACTION_THIS_TURN":
+            return "Action Surge is not configured correctly."
 
-        self.has_action_surge_active = True
-        self.has_taken_action_this_turn = False # Grant another action
+        if not self.mark_ability_used(feature_name):
+            # This should ideally be caught by can_use_ability
+            return "Failed to mark Action Surge as used (should not happen if can_use_ability passed)."
+
+        self.has_action_surge_active = True # Game loop/command handler will check this
+        self.has_taken_action_this_turn = False # Reset to allow another action
 
         msg = f"{ANSI_GREEN}You activate Action Surge! You gain an additional action this turn.{ANSI_RESET}"
         if hasattr(self.user, 'send_message'):
             self.user.send_message(msg)
 
-        # The combat loop or command handler must check player.has_action_surge_active
-        # and after the additional action is taken, it should set player.has_action_surge_active = False.
-        # It also needs to ensure Action Surge can only grant one extra action per turn, even if a L17+ fighter uses it twice in a turn (not possible per rules)
-        # PHB: "you can take one additional action on top of your regular action and a possible bonus action."
-        # L17: "you can use Action Surge twice before a rest, but only once on the same turn."
-        # The "only once on the same turn" part is implicitly handled by has_action_surge_active flag not being reset until end of turn / after next action.
+        # Note: The game's main command processing loop (in main.py handle_client)
+        # will need to check `player.has_action_surge_active`. After the player takes their
+        # additional action, that loop should set `player.has_action_surge_active = False`.
+        # The current `player.reset_turn_actions()` also sets `has_action_surge_active = False`,
+        # which is called at the start of the player's turn processing in `handle_client`.
+        # This should correctly limit it to one extra action per Action Surge use.
+        # The L17 Fighter ability to use Action Surge twice per rest (but still only one extra action per turn)
+        # is handled by the `uses: 2` in the JSON and the `can_use_ability/mark_ability_used` logic.
 
         return msg
 
     def use_second_wind(self):
-        if self.player_class_name != "Fighter": return "Only Fighters can use Second Wind."
-        feature_name = "Second Wind" # Base name for tracking
-        feature_data = self.get_class_feature(feature_name)
-        if not feature_data: return "You do not seem to have the Second Wind ability."
+        # Retrieve the ability definition from processed abilities
+        feature_name = "Second Wind"
+        ability_data = self.action_granted_abilities.get(feature_name)
 
-        if self.has_taken_action_this_turn:
+        if not ability_data:
+            return "You do not have the Second Wind ability prepared/active."
+
+        if self.player_class_name != "Fighter": # Still good to keep a class check for some core abilities
+            return "Only Fighters can use Second Wind."
+
+        if self.has_taken_action_this_turn and ability_data.get("action_type") == "action":
             return "You have already taken your action this turn."
+        # Add checks for bonus action if ability_data.action_type == "bonus_action"
 
-        if not self.can_use_ability(feature_name):
-            return "You have already used Second Wind. You must complete a short or long rest before using it again."
+        if not self.can_use_ability(feature_name): # Uses get_class_feature which now checks action_granted_abilities
+            return "You cannot use Second Wind right now (no uses left or other restriction)."
 
-        heal_dice = feature_data.get("effect_dice", "1d10"); base_heal = roll_dice(heal_dice)
-        level_bonus = self.level if feature_data.get("level_scaling_property") == "fighter_level_bonus_to_heal" else 0
-        total_heal = base_heal + level_bonus; actual_healed_amount = 0
+        effect_details = ability_data.get("effect_details", {})
+        if effect_details.get("type") != "HEAL":
+            return "Second Wind is not configured correctly for healing."
+
+        heal_dice_str = effect_details.get("dice", "1d10")
+        bonus_formula = effect_details.get("bonus_formula") # e.g., "fighter_level"
+
+        base_heal = roll_dice(heal_dice_str)
+        added_bonus = 0
+        if bonus_formula == "fighter_level": # Could expand to "class_level" or specific stat mods
+            added_bonus = self.level # Assuming fighter level is player level for now
+        # elif bonus_formula == "CON_mod": added_bonus = self.get_stat_modifier("CON")
+
+        total_heal_potential = base_heal + added_bonus
+        actual_healed_amount = 0
 
         if self.current_hp < self.max_hp:
-            actual_healed_amount = min(total_heal, self.max_hp - self.current_hp)
+            actual_healed_amount = min(total_heal_potential, self.max_hp - self.current_hp)
             self.current_hp += actual_healed_amount
-        else:
-            self.mark_ability_used(feature_name)
-            self.has_taken_action_this_turn = True
+        else: # Already at max HP
+            self.mark_ability_used(feature_name) # Still consumes the use
+            if ability_data.get("action_type") == "action": self.has_taken_action_this_turn = True
+            # elif ability_data.get("action_type") == "bonus_action": self.has_taken_bonus_action_this_turn = True
             return "You use Second Wind, but you are already at maximum HP!"
 
         self.mark_ability_used(feature_name)
-        self.has_taken_action_this_turn = True
-        return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice}, +{level_bonus} level bonus = {total_heal} potential)."
+        if ability_data.get("action_type") == "action": self.has_taken_action_this_turn = True
+        # elif ability_data.get("action_type") == "bonus_action": self.has_taken_bonus_action_this_turn = True
+
+        return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice_str}, +{added_bonus} bonus = {total_heal_potential} potential)."
 
     def use_dash(self, direction_name, world_ref):
         if not (self.player_class_name == "Rogue" and self.level >= 2):
@@ -1465,23 +1934,40 @@ class Player:
                     continue
 
                 target_save_bonus = target.get_saving_throw_bonus(save_stat) if hasattr(target, 'get_saving_throw_bonus') else 0
+                succeeded_save = False
+                actual_roll_performed = False
 
-                # TODO: Integrate adv/disadv for saving throws (pass adv/disadv to a d20 roller)
-                save_roll = random.randint(1,20) # Base d20 roll for save
+                # Check for auto-fail conditions on STR/DEX saves
+                if save_stat in ["STR", "DEX"] and hasattr(target, 'has_condition'):
+                    auto_fail_conditions = [Player.CONDITION_PARALYZED, Player.CONDITION_PETRIFIED, Player.CONDITION_STUNNED, Player.CONDITION_UNCONSCIOUS]
+                    for cond in auto_fail_conditions:
+                        if target.has_condition(cond):
+                            succeeded_save = False # Explicitly fail
+                            messages.append(f"{target.name} automatically fails the {save_stat} save due to being {cond}!")
+                            break
+                    else: # No auto-fail condition met, proceed to roll
+                        actual_roll_performed = True
+                else: # Not a STR/DEX save, or target has no 'has_condition'
+                    actual_roll_performed = True
 
-                # Handle bonus dice for saving throws (e.g., Bless)
-                save_bonus_dice_value = 0
-                if hasattr(target, 'get_bonus_dice_for_roll_type'):
-                    bonus_dice_list = target.get_bonus_dice_for_roll_type("save")
-                    for dice_str in bonus_dice_list:
-                        save_bonus_dice_value += roll_dice(dice_str)
+                if actual_roll_performed:
+                    # TODO: Integrate adv/disadv for saving throws (pass adv/disadv to a d20 roller from combat.py)
+                    save_roll_d20_result, roll_type_str = roll_d20_with_advantage_disadvantage() # No adv/disadv passed yet
 
-                total_save_roll = save_roll + target_save_bonus + save_bonus_dice_value
+                    save_bonus_dice_value = 0
+                    if hasattr(target, 'get_bonus_dice_for_roll_type'):
+                        bonus_dice_list = target.get_bonus_dice_for_roll_type("save")
+                        for dice_str in bonus_dice_list:
+                            save_bonus_dice_value += roll_dice(dice_str)
 
-                succeeded_save = total_save_roll >= save_dc
+                    total_save_roll = save_roll_d20_result + target_save_bonus + save_bonus_dice_value
+                    succeeded_save = total_save_roll >= save_dc
 
-                messages.append(f"{target.name} attempts a {save_stat} save (DC {save_dc}): rolled {save_roll} + {target_save_bonus} = {total_save_roll}.")
+                    roll_msg_part = f"rolled {save_roll_d20_result}"
+                    if roll_type_str != "normal": roll_msg_part += f" ({roll_type_str})"
+                    messages.append(f"{target.name} attempts a {save_stat} save (DC {save_dc}): {roll_msg_part} + {target_save_bonus} (mod) + {save_bonus_dice_value} (dice) = {total_save_roll}.")
 
+                # succeeded_save is now set
                 damage_to_deal = 0
                 if succeeded_save:
                     messages.append(f"{target.name} succeeds on the save!")
@@ -1492,19 +1978,88 @@ class Player:
                         messages.append("Takes no damage.")
                 else:
                     messages.append(f"{target.name} {ANSI_RED}fails the save!{ANSI_RESET}")
-                    damage_to_deal = roll_dice(damage_dice_to_roll)
+                    damage_to_deal = roll_dice(damage_dice_to_roll) # For damage component
                     messages.append(f"Takes {ANSI_RED}{damage_to_deal}{ANSI_RESET} {damage_type} damage.")
+
+                    # Apply condition if defined for save failure
+                    effect_on_fail = spell_data.get("effect_on_fail")
+                    if effect_on_fail and effect_on_fail.get("type") == "APPLY_CONDITION":
+                        condition_name = effect_on_fail.get("condition")
+                        # Duration logic for conditions needs to be more robust based on spell's duration field.
+                        # For now, simple fixed duration or concentration based.
+                        cond_duration = self.concentration.get("remaining_rounds") if spell_data.get("requires_concentration") else effect_on_fail.get("duration_rounds", 5) # Default 5 rounds if not concentration
+
+                        if hasattr(target, 'add_condition') and condition_name:
+                            target.add_condition(condition_name, duration_rounds=cond_duration, source=spell_name)
+                            messages.append(f"{target.name} is now {condition_name}!")
+                        else:
+                            messages.append(f"Could not apply {condition_name} to {target.name}.")
+
 
                 if damage_to_deal > 0 and hasattr(target, 'take_damage'):
                     target.take_damage(damage_to_deal, attacker=self, damage_type=damage_type)
                     if not target.is_alive():
                         messages.append(f"{ANSI_GREEN}{target.name} has been defeated!{ANSI_RESET}")
 
+        elif spell_type == "area_control_save": # For spells like Entangle
+            # Targeting for AoE needs proper implementation based on shape and origin point.
+            # For now, assume all_mobs_in_room are potential targets if spell is AoE.
+            # This is a placeholder for actual AoE targeting logic.
+            targets_in_area = []
+            if spell_data.get("aoe_shape") and all_mobs_in_room:
+                 # TODO: Implement actual geometric targeting based on player position, spell range, AoE shape/size.
+                 # For now, affects all mobs in room for simplicity if it's an AoE.
+                targets_in_area.extend(all_mobs_in_room)
+                if not targets_in_area and not target_mob: # If no mobs and no primary target, maybe target player if self-castable AoE
+                    pass # Or message "No targets in area."
+                elif target_mob and target_mob not in targets_in_area: # If a primary target was specified, ensure it's included
+                    targets_in_area.append(target_mob) # This might double-add if target_mob was already in all_mobs_in_room
+
+            if not targets_in_area and target_mob: # Single target specified for a potential AoE spell
+                targets_in_area.append(target_mob)
+
+            if not targets_in_area:
+                messages.append("No valid targets in the area of effect.")
+                return messages
+
+            save_dc = self.get_spell_save_dc()
+            save_stat = spell_data.get("save_stat", "DEX").upper()
+            effect_on_fail = spell_data.get("effect_on_fail")
+
+            for target in targets_in_area:
+                if not hasattr(target, 'is_alive') or not target.is_alive(): continue
+
+                target_save_bonus = target.get_saving_throw_bonus(save_stat) if hasattr(target, 'get_saving_throw_bonus') else 0
+                save_roll = random.randint(1,20)
+                # TODO: Advantage/Disadvantage on save
+                total_save_roll = save_roll + target_save_bonus
+
+                messages.append(f"{target.name} attempts a {save_stat} save (DC {save_dc}): rolled {save_roll} + {target_save_bonus} = {total_save_roll}.")
+                if total_save_roll >= save_dc:
+                    messages.append(f"{target.name} succeeds on the save.")
+                    # Handle half damage or other effects on success if applicable
+                else:
+                    messages.append(f"{target.name} {ANSI_RED}fails the save!{ANSI_RESET}")
+                    if effect_on_fail and effect_on_fail.get("type") == "APPLY_CONDITION":
+                        condition_name = effect_on_fail.get("condition")
+                        cond_duration = self.concentration.get("remaining_rounds") if spell_data.get("requires_concentration") else effect_on_fail.get("duration_rounds", 5)
+                        if hasattr(target, 'add_condition') and condition_name:
+                            target.add_condition(condition_name, duration_rounds=cond_duration, source=spell_name)
+                            messages.append(f"{target.name} is now {condition_name}!")
+            # Difficult terrain for Entangle is a persistent room effect, not handled here yet.
+
         elif spell_type == "healing":
             # Simplified: target is self or target_mob
-            target_to_heal = target_mob if target_mob else self # Default to self if no target
+            target_to_heal = target_mob
+            if not target_mob and "Touch" in spell_data.get("range","") or "Self" in spell_data.get("range", ""):
+                target_to_heal = self # Default to self if touch/self and no target
+
             if not target_to_heal or not hasattr(target_to_heal, 'current_hp'):
-                return ["Invalid target for healing."]
+                # Check if it's a self-cast heal where target_mob might be None
+                if spell_data.get("range", "").lower() == "self" and not target_mob:
+                    target_to_heal = self
+                else:
+                    return ["Invalid target for healing."]
 
             base_heal_dice = spell_data.get("heal_dice", "0")
             total_heal_dice_str = base_heal_dice
@@ -1582,6 +2137,72 @@ class Player:
                     messages.append(f"{target.name} is now affected by {effect_details['name']}.")
                 else:
                     messages.append(f"Cannot apply buff to {target.name}.")
+
+        elif spell_type == "utility_sense": # For spells like Detect Magic
+            effect_details = spell_data.get("effect_details")
+            if not effect_details:
+                messages.append(f"No effect details defined for utility spell {spell_name}.")
+                return messages
+
+            # Apply to self
+            effect_to_apply = effect_details.copy()
+            effect_to_apply["source_caster_id"] = self.name
+            effect_to_apply["duration_rounds"] = self.concentration.get("remaining_rounds", 0) if spell_data.get("requires_concentration") else 0
+            if not spell_data.get("requires_concentration") and "duration" in spell_data:
+                 duration_str = spell_data.get("duration", "0 rounds")
+                 if "minute" in duration_str: effect_to_apply["duration_rounds"] = int(duration_str.split(" minute")[0].split("up to ")[-1]) * 10 # up to X minute(s)
+                 elif "hour" in duration_str: effect_to_apply["duration_rounds"] = int(duration_str.split(" hour")[0].split("up to ")[-1]) * 600
+                 elif "round" in duration_str: effect_to_apply["duration_rounds"] = int(duration_str.split(" round")[0].split("up to ")[-1])
+
+            self.add_effect(effect_name=effect_details.get("name", spell_name), effect_data=effect_to_apply)
+            messages.append(f"You are now under the effect of {effect_details.get('name', spell_name)}.")
+            # Actual mechanics of SENSE_MAGIC etc. would be polled by relevant commands/systems.
+
+        elif spell_type == "single_target_save_condition": # For Charm Person
+            if not target_mob or not hasattr(target_mob, 'is_alive') or not target_mob.is_alive():
+                return ["You need a living target for this spell."]
+            # TODO: Add target_type check (e.g., "humanoid") from spell_data
+
+            save_dc = self.get_spell_save_dc()
+            save_stat = spell_data.get("save_stat", "WIS").upper()
+            effect_on_fail = spell_data.get("effect_on_fail")
+
+            target_save_bonus = target_mob.get_saving_throw_bonus(save_stat) if hasattr(target_mob, 'get_saving_throw_bonus') else 0
+
+            # Handle save advantage for Charm Person if target is hostile
+            adv_for_save = False
+            if spell_data.get("save_advantage_condition") == "target_is_hostile_or_in_combat_with_caster_allies":
+                if target_mob.in_combat and (target_mob.target == self or (target_mob.target and target_mob.target.user in self.user.get_allies() ) ): # Simplified: needs party/ally system
+                    adv_for_save = True
+                    messages.append(f"({target_mob.name} gets advantage on the save as you are fighting it!)")
+
+            save_roll, _ = roll_d20_with_advantage_disadvantage(advantage=adv_for_save) # Target gets advantage
+            total_save_roll = save_roll + target_save_bonus
+
+            messages.append(f"{target_mob.name} attempts a {save_stat} save (DC {save_dc}): rolled {save_roll} + {target_save_bonus} = {total_save_roll}.")
+            if total_save_roll >= save_dc:
+                messages.append(f"{target_mob.name} succeeds on the save and is unaffected.")
+            else:
+                messages.append(f"{target_mob.name} {ANSI_RED}fails the save!{ANSI_RESET}")
+                if effect_on_fail and effect_on_fail.get("type") == "APPLY_CONDITION":
+                    condition_name = effect_on_fail.get("condition")
+                    # Duration parsing for "1 hour"
+                    duration_hours = effect_on_fail.get("duration_hours", 0)
+                    cond_duration_rounds = duration_hours * 600 # 1 hour = 600 rounds (6s/round * 10round/min * 60min/hr)
+
+                    if hasattr(target_mob, 'add_condition') and condition_name:
+                        # Pass additional details for Charmed condition if needed
+                        condition_details_for_add = {"source": spell_name}
+                        if effect_on_fail.get("charmed_by_caster_id"):
+                             condition_details_for_add["charmed_by_caster_name"] = self.name # Store who charmed it
+                        if effect_on_fail.get("end_condition_on_harm"):
+                             condition_details_for_add["end_on_harm_from_caster_allies"] = True
+
+                        target_mob.add_condition(condition_name, duration_rounds=cond_duration_rounds, **condition_details_for_add)
+                        messages.append(f"{target_mob.name} is now {condition_name} by you!")
+            # Handle multi-target for higher levels
+            # TODO: Implement target selection for additional targets if actual_cast_level > base_spell_level
+
 
         elif spell_type == "auto_hit_damage":
             if not target_mob: # Requires at least one target
@@ -1750,9 +2371,30 @@ class Player:
 
         actual_damage_taken = amount
 
-        # Account for resistances and vulnerabilities (TODO: Implement these via traits/effects)
-        # if self.has_resistance(damage_type): actual_damage_taken = math.floor(actual_damage_taken / 2)
-        # if self.has_vulnerability(damage_type): actual_damage_taken = actual_damage_taken * 2
+        # Account for resistances, vulnerabilities, and immunities
+        if damage_type in self.immunities:
+            actual_damage_taken = 0
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_GREEN}You are immune to {damage_type}! No damage taken.{ANSI_RESET}")
+            # Early exit if immune, unless there's a reason to continue (e.g. "still takes X effect on immune")
+            # For now, immunity means no damage and no further processing of this damage instance.
+            # However, other effects from the same attack might still apply if handled separately.
+            if actual_damage_taken == 0: # If immunity made it zero
+                 # We might still want to record the "hit" for 0 damage for some log/trigger purposes
+                 # but the player's HP doesn't change.
+                 # If there are on-hit effects that bypass immunity (rare), they'd need special handling.
+                 return # Exit if immune and damage is zeroed.
+
+        if damage_type in self.vulnerabilities: # Apply vulnerability first as per some D&D rulings
+            actual_damage_taken = math.floor(actual_damage_taken * 2) # Or actual_damage_taken *= 2
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_RED}You are vulnerable to {damage_type}! Damage increased!{ANSI_RESET}")
+
+        if damage_type in self.resistances:
+            actual_damage_taken = math.floor(actual_damage_taken / 2)
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_YELLOW}You resist {damage_type}! Damage halved.{ANSI_RESET}")
+
 
         # Temporary HP is lost first
         if self.temporary_hp > 0:
@@ -1769,11 +2411,30 @@ class Player:
         # Send damage message to player
         if hasattr(self.user, 'send_message'):
             attacker_name = attacker.name if attacker and hasattr(attacker, 'name') else "something"
-            self.user.send_message(f"{ANSI_RED}You take {amount} {damage_type} damage from {attacker_name}! (Reduced to {actual_damage_taken} after temp HP){ANSI_RESET}")
+            self.user.send_message(f"{ANSI_RED}You take {amount} {damage_type} damage from {attacker_name}! (Reduced to {actual_damage_taken} after temp HP and resistances){ANSI_RESET}")
 
-        if self.current_hp <= 0:
-            self.current_hp = 0
+        if self.current_hp <= 0 and actual_damage_taken > 0 : # Only trigger if actual damage was dealt and HP is 0 or less
+            # Check for Relentless Endurance before calling handle_death
+            relentless_endurance_used_this_time = False
+            for triggered_ability in self.triggered_abilities_effects:
+                if triggered_ability.get("name") == "Relentless Endurance" and \
+                   triggered_ability.get("trigger_condition") == "on_reduce_to_zero_hp_not_killed_outright":
+                    # Check if the ability can be used (uses, refresh)
+                    if self.can_use_ability("Relentless Endurance"):
+                        if self.mark_ability_used("Relentless Endurance"):
+                            hp_to_set = triggered_ability.get("effect_details", {}).get("value", 1)
+                            self.current_hp = hp_to_set
+                            if hasattr(self.user, 'send_message'):
+                                self.user.send_message(f"{ANSI_GREEN}Relentless Endurance kicks in! You drop to {self.current_hp} HP instead of falling unconscious!{ANSI_RESET}")
+                            relentless_endurance_used_this_time = True
+                            break # Relentless Endurance used
+
+            if not relentless_endurance_used_this_time:
+                self.current_hp = 0
+                self.handle_death(attacker)
+        elif self.current_hp <= 0 and not self.is_dead : # HP is 0 but no damage was taken (e.g. effect set HP to 0)
             self.handle_death(attacker)
+
 
     def handle_death(self, killer=None):
         if self.is_dead: # Already processed death

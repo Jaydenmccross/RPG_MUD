@@ -1,12 +1,23 @@
 {
   "start": {
     "name": "Church of Testing",
-    "description": "You find yourself in a serene sanctuary, the air filled with a faint scent of incense. This is a place of healing and rebirth. A soft light emanates from a simple altar. Exits lead north and east from the church grounds.",
+    "description": "You find yourself in a serene sanctuary, the air filled with a faint scent of incense. This is a place of healing and rebirth. A soft light emanates from a simple altar. Exits lead north and east from the church grounds. One of the flagstones near the west wall looks a bit loose.",
     "exits": {
       "north": "mountain_path",
       "east": "river_bank",
       "west": "a_dead_end",
       "south": "river_swimming"
+    },
+    "investigatable_objects": {
+      "loose_stone": {
+        "display_name": "loose flagstone",
+        "aliases": ["flagstone", "stone", "loose stone"],
+        "dc": 14,
+        "reveals_text": "You pry at the loose flagstone and find a small, tarnished silver ring hidden beneath!",
+        "reveals_item_id": "tarnished_silver_ring",
+        "reveals_item_quantity": 1,
+        "loot_once_flag_id": "start_room_loose_stone_ring"
+      }
     }
   },
   "mountain_path": {

@@ -94,5 +94,110 @@
     "aoe_shape": "cone",
     "aoe_size": 15,
     "tags": ["damage", "saving_throw", "aoe"]
+  },
+  "cure_wounds": {
+    "name": "Cure Wounds",
+    "level": 1,
+    "school": "Evocation",
+    "casting_time": "1 action",
+    "range": "Touch",
+    "components": ["V", "S"],
+    "duration": "Instantaneous",
+    "description": "A creature you touch regains a number of hit points equal to 1d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
+    "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d8 for each slot level above 1st.",
+    "type": "healing",
+    "heal_dice": "1d8",
+    "add_spellcasting_modifier_to_heal": true,
+    "heal_dice_per_level_above_base": "1d8",
+    "target_type": "creature_touch",
+    "tags": ["healing"]
+  },
+  "entangle": {
+    "name": "Entangle",
+    "level": 1,
+    "school": "Conjuration",
+    "casting_time": "1 action",
+    "range": "90 feet",
+    "components": ["V", "S"],
+    "duration": "Concentration, up to 1 minute",
+    "description": "Grasping weeds and vines sprout from the ground in a 20-foot square starting from a point within range. For the duration, these plants turn the ground in the area into difficult terrain. A creature in the area when you cast the spell must succeed on a Strength saving throw or be restrained by the entangling plants until the spell ends. A creature restrained by the plants can use its action to make a Strength check against your spell save DC. On a success, it frees itself.",
+    "type": "area_control_save",
+    "aoe_shape": "square",
+    "aoe_size": 20,
+    "target_point_max_range": 90,
+    "save_stat": "STR",
+    "effect_on_fail": {
+      "type": "APPLY_CONDITION",
+      "condition": "Restrained",
+      "duration_details": "While in area or until freed by STR check vs Spell DC"
+    },
+    "area_持续_effect": {"type": "DIFFICULT_TERRAIN"},
+    "requires_concentration": true,
+    "tags": ["control", "aoe", "concentration", "difficult_terrain", "restrain"]
+  },
+  "detect_magic": {
+    "name": "Detect Magic",
+    "level": 1,
+    "school": "Divination",
+    "ritual": true,
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": ["V", "S"],
+    "duration": "Concentration, up to 10 minutes",
+    "description": "For the duration, you sense the presence of magic within 30 feet of you. If you sense magic in this way, you can use your action to see a faint aura around any visible creature or object in the area that bears magic, and you learn its school of magic, if any.",
+    "type": "utility_sense",
+    "effect_details": {
+      "name": "Detecting Magic",
+      "type": "SENSE_MAGIC",
+      "sense_range": 30,
+      "aura_action_required": true,
+      "reveals_school_of_magic": true
+    },
+    "requires_concentration": true,
+    "tags": ["utility", "detection", "concentration", "ritual"]
+  },
+  "charm_person": {
+    "name": "Charm Person",
+    "level": 1,
+    "school": "Enchantment",
+    "casting_time": "1 action",
+    "range": "30 feet",
+    "components": ["V", "S"],
+    "duration": "1 hour",
+    "description": "You attempt to charm a humanoid you can see within range. It must make a Wisdom saving throw, and does so with advantage if you or your companions are fighting it. If it fails the saving throw, it is charmed by you until the spell ends or until you or your companions do anything harmful to it. The charmed creature regards you as a friendly acquaintance.",
+    "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, you can target one additional creature for each slot level above 1st.",
+    "type": "single_target_save_condition",
+    "target_type": "humanoid",
+    "max_range": 30,
+    "save_stat": "WIS",
+    "save_advantage_condition": "target_is_hostile_or_in_combat_with_caster_allies",
+    "effect_on_fail": {
+      "type": "APPLY_CONDITION",
+      "condition": "Charmed",
+      "charmed_by_caster_id": true,
+      "duration_hours": 1,
+      "end_condition_on_harm": true
+    },
+    "max_targets_base": 1,
+    "max_targets_per_level_above_base": 1,
+    "tags": ["control", "social", "charm"]
+  },
+  "shield": {
+    "name": "Shield",
+    "level": 1,
+    "school": "Abjuration",
+    "casting_time": "1 reaction, which you take when you are hit by an attack or targeted by the magic missile spell",
+    "range": "Self",
+    "components": ["V", "S"],
+    "duration": "1 round",
+    "description": "An invisible barrier of magical force appears and protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from magic missile.",
+    "type": "buff_self_reaction",
+    "trigger": "hit_by_attack_or_magic_missile",
+    "effect_details": {
+        "name": "Shield Spell Active",
+        "type": "BONUS_AC", "value": 5,
+        "custom_effects": ["immunity_to_magic_missile_damage"]
+    },
+    "tags": ["defense", "reaction"]
   }
 }

@@ -123,16 +123,39 @@ def resolve_attack(attacker, defender,
     has_advantage = False
     has_disadvantage = False
 
-    # Example: Blinded condition on attacker
-    if hasattr(attacker, 'has_condition') and attacker.has_condition("Blinded"): # Assuming Player.CONDITION_BLINDED is "Blinded"
-        has_disadvantage = True
+    # Attacker conditions
+    if hasattr(attacker, 'has_condition'):
+        if attacker.has_condition("Blinded"): has_disadvantage = True
+        if attacker.has_condition("Frightened"): has_disadvantage = True # Simplified: assumes source is visible
+        if attacker.has_condition("Poisoned"): has_disadvantage = True
+        if attacker.has_condition("Prone"): has_disadvantage = True
+        if attacker.has_condition("Restrained"): has_disadvantage = True
 
-    # Example: Defender is Restrained (attacker has advantage) - this requires checking defender's conditions
-    if hasattr(defender, 'has_condition') and defender.has_condition("Restrained"): # Assuming Player.CONDITION_RESTRAINED
-        has_advantage = True
-    # Example: Attacker is invisible (attacker has advantage)
-    if hasattr(attacker, 'has_condition') and attacker.has_condition("Invisible"):
-        has_advantage = True
+        if attacker.has_condition("Invisible") or attacker.has_condition("Hidden"):
+            has_advantage = True
+            if attacker.has_condition("Hidden") and hasattr(attacker, 'remove_condition'):
+                attacker.remove_condition("Hidden")
+                if hasattr(attacker, 'user') and hasattr(attacker.user, 'send_message'):
+                    attacker.user.send_message(f"{ANSI_YELLOW}You are no longer hidden.{ANSI_RESET}")
+
+    # Defender conditions that affect attacker's roll
+    is_melee_attack = hasattr(attacker, 'weapon_category') and attacker.weapon_category == "melee" # Approx
+
+    if hasattr(defender, 'has_condition'):
+        if defender.has_condition("Blinded"): pass # Doesn't directly affect attacker's roll, but defender's attacks
+        if defender.has_condition("Paralyzed"): has_advantage = True
+        if defender.has_condition("Petrified"): has_advantage = True
+        if defender.has_condition("Prone"):
+            if is_melee_attack: has_advantage = True
+            else: has_disadvantage = True # Ranged attacks
+        if defender.has_condition("Restrained"): has_advantage = True
+        if defender.has_condition("Stunned"): has_advantage = True
+        if defender.has_condition("Unconscious"): has_advantage = True
+
+        if defender.has_condition("Invisible") or defender.has_condition("Hidden"):
+            # Attacking an unseen target (assuming attacker cannot see them)
+            if not (hasattr(attacker, 'has_condition') and attacker.has_condition("Blinded")): # If attacker isn't also blind
+                 has_disadvantage = True
 
 
     roll, roll_type_str = roll_d20_with_advantage_disadvantage(advantage=has_advantage, disadvantage=has_disadvantage)
@@ -146,7 +169,15 @@ def resolve_attack(attacker, defender,
 
     total_attack_roll = roll + attack_bonus + bonus_dice_value
 
-    is_critical_hit = (roll in crit_range) # Natural 20 is a crit (original d20 roll, not total)
+    is_critical_hit = (roll in crit_range) # Natural roll in crit_range (e.g. 20, or 19-20)
+
+    # Check for auto-crit conditions (e.g., attacking a Paralyzed or Unconscious target from melee)
+    if not is_critical_hit and is_melee_attack: # Only apply if not already a natural crit
+        if hasattr(defender, 'has_condition') and \
+           (defender.has_condition("Paralyzed") or defender.has_condition("Unconscious")):
+            is_critical_hit = True # Auto-crit
+            messages.append(f"{ANSI_YELLOW}Attacking a helpless target - it's a critical hit!{ANSI_RESET}")
+
     is_critical_miss = (roll == 1) # Natural 1 is always a miss for attacks (original d20 roll)
 
     roll_description = f"Roll: {roll}"
