@@ -123,6 +123,22 @@ def resolve_attack(attacker, defender,
     has_advantage = False
     has_disadvantage = False
 
+    # --- Reckless Attack Advantage for Attacker ---
+    if hasattr(attacker, 'is_reckless_attacking_this_turn') and attacker.is_reckless_attacking_this_turn:
+        # Reckless Attack applies to melee weapon attacks using Strength.
+        # Assuming 'is_spell_attack' is False for weapon attacks.
+        # And 'attack_details' (from get_attack_details) would contain 'attack_ability_stat' for players.
+        is_melee_strength_attack = False
+        if not is_spell_attack and hasattr(attacker, 'get_attack_details'): # Player attacking
+            attack_details_for_reckless = attacker.get_attack_details()
+            if attack_details_for_reckless.get("weapon_category") == "melee" and \
+               attack_details_for_reckless.get("attack_ability_stat") == "STR":
+                is_melee_strength_attack = True
+
+        if is_melee_strength_attack:
+            has_advantage = True
+            messages.append(f"{ANSI_YELLOW}(Attacking recklessly - Advantage!){ANSI_RESET}")
+
     # Attacker conditions
     if hasattr(attacker, 'has_condition'):
         if attacker.has_condition("Blinded"): has_disadvantage = True
@@ -140,6 +156,11 @@ def resolve_attack(attacker, defender,
 
     # Defender conditions that affect attacker's roll
     is_melee_attack = hasattr(attacker, 'weapon_category') and attacker.weapon_category == "melee" # Approx
+
+    # --- Reckless Attack Advantage against Defender ---
+    if hasattr(defender, 'reckless_attack_active_until_next_turn') and defender.reckless_attack_active_until_next_turn:
+        has_advantage = True # Attacker gets advantage if defender was reckless
+        messages.append(f"{ANSI_YELLOW}(Target was reckless - Advantage!){ANSI_RESET}")
 
     if hasattr(defender, 'has_condition'):
         if defender.has_condition("Blinded"): pass # Doesn't directly affect attacker's roll, but defender's attacks
@@ -209,7 +230,43 @@ def resolve_attack(attacker, defender,
 
             crit_damage_roll = roll_dice(dice_only_str)
             damage += crit_damage_roll
-            messages.append(f"Extra critical damage dice roll: {crit_damage_roll}!")
+            messages.append(f"Standard critical damage dice roll: {crit_damage_roll}!")
+
+            # Brutal Critical and similar features
+            if hasattr(attacker, 'on_critical_hit_effects'):
+                for crit_effect in attacker.on_critical_hit_effects:
+                    if crit_effect.get("type") == "ADD_CRIT_DICE":
+                        # Check weapon category if specified by the effect
+                        weapon_cat_req = crit_effect.get("weapon_category")
+                        attacker_weapon_cat = ""
+                        if hasattr(attacker, 'get_attack_details') and not is_spell_attack: # Check if player and has weapon details
+                            attacker_weapon_cat = attacker.get_attack_details().get("weapon_category", "unknown")
+
+                        if not weapon_cat_req or weapon_cat_req == attacker_weapon_cat:
+                            num_extra_dice = crit_effect.get("dice_count", 0)
+                            # The dice type for Brutal Critical is the weapon's damage die.
+                            # dice_only_str already holds this (e.g., "1d12", "2d6").
+                            # We need to roll `num_extra_dice` of these.
+                            brutal_crit_val = 0
+                            if num_extra_dice > 0 and dice_only_str:
+                                # If dice_only_str is "2d6", and num_extra_dice is 1, we roll "1d6" (one of the weapon's dice)
+                                # If dice_only_str is "1d12", and num_extra_dice is 1, we roll "1d12"
+                                # The PHB says "roll one additional weapon damage die". If weapon is 2d6, it means one d6.
+                                # So we need to parse the weapon's individual die type.
+                                weapon_die_type_for_brutal = dice_only_str # Default to full string if not XdY
+                                if 'd' in dice_only_str:
+                                    parts = dice_only_str.split('d')
+                                    if len(parts) == 2: # Format like "1d12" or "2d6"
+                                        weapon_die_type_for_brutal = f"1d{parts[1]}" # Take the "dY" part
+
+                                for _ in range(num_extra_dice):
+                                    brutal_crit_val += roll_dice(weapon_die_type_for_brutal)
+                                if brutal_crit_val > 0:
+                                    damage += brutal_crit_val
+                                    messages.append(f"{ANSI_YELLOW}Brutal Critical! Extra {brutal_crit_val} damage from {num_extra_dice} additional {weapon_die_type_for_brutal} dice!{ANSI_RESET}")
+                        else:
+                            messages.append(f"(Brutal Critical effect did not apply due to weapon category mismatch: required {weapon_cat_req}, used {attacker_weapon_cat})")
+
 
         damage = max(0, damage) # Ensure damage is not negative
 

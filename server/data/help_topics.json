@@ -1,0 +1,164 @@
+{
+  "general": {
+    "name": "General Help",
+    "aliases": ["help", "commands"],
+    "text": [
+      "Welcome to the MUD! Here are some common command categories:",
+      " - Movement: 'north', 'south', 'east', 'west', 'up', 'down' (or n, s, e, w, u, d)",
+      " - Interaction: 'look', 'get', 'drop', 'equip', 'remove', 'kill', 'talk', 'give'",
+      " - Character: 'inventory', 'equipment', 'sheet', 'skills', 'spells'",
+      " - Communication: 'say', 'tell <player> <message>'",
+      " - Other: 'help <topic>', 'quit'",
+      "Type 'help <command_name>' for more details on a specific command."
+    ]
+  },
+  "look": {
+    "name": "Look",
+    "aliases": ["l"],
+    "text": [
+      "Syntax: look [target]",
+      " - 'look': Shows your current room, its exits, items, and any creatures.",
+      " - 'look <target>': Looks more closely at a specific creature, item, or object."
+    ]
+  },
+  "movement": {
+    "name": "Movement",
+    "aliases": ["move", "go", "north", "south", "east", "west", "up", "down", "n", "s", "e", "w", "u", "d"],
+    "text": [
+      "Syntax: <direction>",
+      "Examples: 'north', 'n', 'east', 'e'",
+      "Moves your character in the specified direction if an exit exists."
+    ]
+  },
+  "get": {
+    "name": "Get",
+    "aliases": ["take", "pickup"],
+    "text": [
+      "Syntax: get <item_name> [container_name]",
+      " - 'get <item_name>': Picks up an item from the ground in your current room.",
+      " - 'get <item_name> <container_name>': Takes an item from a container in the room or your inventory."
+    ]
+  },
+  "drop": {
+    "name": "Drop",
+    "aliases": ["ditch"],
+    "text": [
+      "Syntax: drop <item_name>",
+      "Drops an item from your inventory onto the ground in your current room."
+    ]
+  },
+  "inventory": {
+    "name": "Inventory",
+    "aliases": ["inv", "i"],
+    "text": [
+      "Syntax: inventory",
+      "Displays a list of items currently in your inventory."
+    ]
+  },
+  "equipment": {
+    "name": "Equipment",
+    "aliases": ["eqlist", "equipped"],
+    "text": [
+      "Syntax: equipment",
+      "Displays a list of items currently equipped on your character."
+    ]
+  },
+  "equip": {
+    "name": "Equip",
+    "aliases": ["wear", "wield"],
+    "text": [
+      "Syntax: equip <item_name> [slot_name]",
+      "Equips an item from your inventory. If the item can be equipped in multiple slots, you can optionally specify the slot (e.g., 'equip dagger offhand')."
+    ]
+  },
+  "remove": {
+    "name": "Remove",
+    "aliases": ["unequip"],
+    "text": [
+      "Syntax: remove <slot_name_or_item_name>",
+      "Removes an equipped item and places it in your inventory. You can specify the slot (e.g., 'remove head') or the item name if it's unique."
+    ]
+  },
+  "kill": {
+    "name": "Kill",
+    "aliases": ["attack", "k"],
+    "text": [
+      "Syntax: kill <target_name>",
+      "Initiates combat with the specified target in your current room."
+    ]
+  },
+  "sheet": {
+    "name": "Sheet",
+    "aliases": ["character", "score", "stats", "char", "c", "st"],
+    "text": [
+      "Syntax: sheet",
+      "Displays your character sheet, including stats, HP, AC, level, and other vital information."
+    ]
+  },
+  "say": {
+    "name": "Say",
+    "aliases": ["'"],
+    "text": [
+      "Syntax: say <message>",
+      "Broadcasts a message to everyone in your current room."
+    ]
+  },
+  "tell": {
+    "name": "Tell",
+    "aliases": ["whisper", "t"],
+    "text": [
+      "Syntax: tell <player_name> <message>",
+      "Sends a private message to another player who is currently online."
+    ]
+  },
+  "quit": {
+    "name": "Quit",
+    "aliases": ["exit"],
+    "text": [
+      "Syntax: quit",
+      "Saves your character and disconnects you from the game."
+    ]
+  },
+  "spells": {
+      "name": "Spells",
+      "aliases": ["spl"],
+      "text": [
+          "Syntax: spells [known|prepared|available]",
+          " - 'spells': Lists spells you currently have prepared (if applicable) or know.",
+          " - 'spells known': Lists all spells you know.",
+          " - 'spells prepared': Lists spells you have prepared.",
+          " - 'spells available': Lists spells available for you to prepare (for preparing classes).",
+          "To cast a spell, use 'cast <spell_name> [target] [at <level>]'.",
+          "To get help on a specific spell, type 'help <spell_name>'."
+      ]
+  },
+  "cast": {
+      "name": "Cast",
+      "aliases": [],
+      "text": [
+          "Syntax: cast <spell_name> [target_name] [at <spell_level>]",
+          " - 'cast \"fire bolt\" goblin': Casts Fire Bolt at a goblin.",
+          " - 'cast cure wounds self': Casts Cure Wounds on yourself.",
+          " - 'cast magic missile at 3': Casts Magic Missile using a 3rd-level spell slot.",
+          "If a spell requires concentration, casting another concentration spell will break it.",
+          "Cantrips do not require spell slots."
+      ]
+  },
+   "prepare": {
+    "name": "Prepare",
+    "aliases": ["prep"],
+    "text": [
+      "Syntax: prepare <spell_name>",
+      "For classes that prepare spells (Cleric, Druid, Paladin, Wizard), this command adds a known spell to your list of prepared spells for the day.",
+      "You can only prepare a certain number of spells, determined by your class and level."
+    ]
+  },
+  "unprepare": {
+    "name": "Unprepare",
+    "aliases": ["unprep"],
+    "text": [
+      "Syntax: unprepare <spell_name>",
+      "Removes a spell from your list of prepared spells, freeing up a preparation slot."
+    ]
+  }
+}

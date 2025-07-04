@@ -25,5 +25,24 @@
       "persuade_success": "Oh, alright then. Boss said to watch out for a shiny rock near the old stump. Maybe you find?",
       "persuade_fail": "Go away, stupid! Or I call guards!"
     }
+  },
+  "wild_dog001": {
+    "name": "Wild Dog",
+    "description": "A scruffy, wary-looking canine with matted fur and sharp teeth. It eyes you cautiously.",
+    "max_hp": 10,
+    "ac": 12,
+    "attack_bonus": 4,
+    "damage_dice": "1d6+1",
+    "damage_type": "piercing",
+    "is_aggressive": true,
+    "xp_value": 25,
+    "is_tameable": true,
+    "tame_dc": 14,
+    "dialogue": {
+      "default": "Grrrrr...",
+      "on_tame_success": "The wild dog cautiously approaches, sniffs your hand, and then lets out a small whimper, wagging its tail slightly.",
+      "on_tame_fail": "The wild dog snarls and snaps at you before backing away, unconvinced by your efforts.",
+      "on_engage": "The wild dog barks fiercely and lunges!"
+    }
   }
 }

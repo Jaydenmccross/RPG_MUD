@@ -35,13 +35,142 @@
     "saving_throw_proficiencies": ["STR", "CON"],
     "armor_proficiencies": ["light", "medium", "shields"],
     "weapon_proficiencies": ["simple", "martial"],
+    "skill_proficiencies": ["Animal Handling", "Athletics", "Intimidation", "Nature", "Perception", "Survival"],
     "spellcasting_ability": null,
     "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
-      "1": [{"name": "Rage", "description": "..."}, {"name": "Unarmored Defense (Barbarian)", "description": "..."}],
-      "2": [{"name": "Reckless Attack", "description": "..."}, {"name": "Danger Sense", "description": "..."}],
-      "3": [{"name": "Primal Path", "description": "..."}],
-      "20": [{"name": "Primal Champion", "description": "..."}]
+      "1": [
+        {
+          "name": "Rage",
+          "description": "In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action. While raging, you gain the following benefits if you aren’t wearing heavy armor: advantage on Strength checks and Strength saving throws; when you make a melee weapon attack using Strength, you gain a bonus to the damage roll that increases as you gain levels as a barbarian; you have resistance to bludgeoning, piercing, and slashing damage. If you are able to cast spells, you can’t cast them or concentrate on them while raging. Your rage lasts for 1 minute. It ends early if you are knocked unconscious or if your turn ends and you haven’t attacked a hostile creature since your last turn or taken damage since then. You can also end your rage on your turn as a bonus action. Once you have raged the number of times shown for your barbarian level in the Rages column of the Barbarian table, you must finish a long rest before you can rage again.",
+          "effects": [
+            {"type": "GRANT_ACTION_ABILITY", "name": "Rage", "action_type": "bonus_action",
+             "uses_by_level": {"1": 2, "3": 3, "6": 4, "12": 5, "17": 6, "20": 9999 }, "refresh_on": "long_rest",
+             "effect_details": {
+                "type": "APPLY_SELF_BUFF_WITH_CONDITIONS", "buff_name": "Raging", "duration_rounds": 10,
+                "active_effects": [
+                  {"type": "ADVANTAGE", "roll_type": "ability_check", "ability": "STR", "condition": "not_wearing_heavy_armor", "notes": "Rage STR Check Adv"},
+                  {"type": "ADVANTAGE", "roll_type": "saving_throw", "ability": "STR", "condition": "not_wearing_heavy_armor", "notes": "Rage STR Save Adv"},
+                  {"type": "BONUS_ROLL", "roll_type": "damage", "weapon_category": "melee", "ability_for_attack": "STR",
+                   "value_scaling_by_level": {"1": 2, "9": 3, "16": 4}, "condition": "not_wearing_heavy_armor", "notes": "Rage Damage Bonus"},
+                  {"type": "RESISTANCE", "damage_type": "bludgeoning", "condition": "not_wearing_heavy_armor", "notes": "Rage Resistance"},
+                  {"type": "RESISTANCE", "damage_type": "piercing", "condition": "not_wearing_heavy_armor", "notes": "Rage Resistance"},
+                  {"type": "RESISTANCE", "damage_type": "slashing", "condition": "not_wearing_heavy_armor", "notes": "Rage Resistance"}
+                ],
+                "restrictions": [{"type": "RESTRICT_ACTION", "activity": "spellcasting", "details": "Cannot cast or concentrate on spells while raging."}],
+                "end_conditions": ["knocked_unconscious", "turn_ends_and_no_attack_or_damage_since_last_turn"],
+                "can_be_ended_by_bonus_action": true
+             }
+            }
+          ]
+        },
+        {
+          "name": "Unarmored Defense (Barbarian)",
+          "description": "While you are not wearing any armor, your Armor Class equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit.",
+          "effects": [{"type": "UNARMORED_DEFENSE_AC", "ac_formula": "10 + DEX_mod + CON_mod", "allows_shield": true, "condition": "not_wearing_any_armor"}]
+        }
+      ],
+      "2": [
+        {
+          "name": "Reckless Attack",
+          "description": "Starting at 2nd level, you can throw aside all concern for defense to attack with fierce desperation. When you make your first attack on your turn, you can decide to attack recklessly. Doing so gives you advantage on melee weapon attack rolls using Strength during this turn, but attack rolls against you have advantage until your next turn.",
+          "effects": [
+            {"type": "GRANT_ACTION_MODIFIER_ABILITY", "name": "Reckless Attack", "when_to_activate": "on_first_melee_strength_attack_choice",
+             "self_effects": [{"type": "ADVANTAGE", "roll_type": "attack", "weapon_category": "melee", "ability_for_attack": "STR", "duration_turns": "current"}],
+             "target_effects_on_self": [{"type": "INFLICT_ADVANTAGE_ON_ATTACKS_VS_SELF", "duration_turns": 1}]
+            }
+          ]
+        },
+        {
+          "name": "Danger Sense",
+          "description": "At 2nd level, you gain an uncanny sense of when things nearby aren’t as they should be, giving you an edge when you dodge away from danger. You have advantage on Dexterity saving throws against effects that you can see, such as traps and spells. To gain this benefit, you can’t be blinded, deafened, or incapacitated.",
+          "effects": [
+            {
+              "type": "ADVANTAGE_ON_SAVE_VS_VISIBLE_EFFECT",
+              "ability": "DEX",
+              "applies_to_tags": ["trap", "spell"],
+              "notes": "Player must not be blinded, deafened, or incapacitated. Assumes saving throw source will be tagged 'visible_source' or with 'trap'/'spell' by the system resolving the save."
+            }
+          ]
+        }
+      ],
+      "3": [
+        {"name": "Primal Path", "description": "At 3rd level, you choose a path that shapes the nature of your rage. Your choice grants you features at 3rd level and again at 6th, 10th, and 14th levels."}
+      ],
+      "4": [
+        {"name": "Ability Score Improvement", "description": "Standard ASI.", "effects": [{"type": "ASI"}]}
+      ],
+      "5": [
+        {"name": "Extra Attack", "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.", "effects": [{"type": "SET_EXTRA_ATTACKS", "value": 1}]},
+        {"name": "Fast Movement", "description": "Starting at 5th level, your speed increases by 10 feet while you aren’t wearing heavy armor.", "effects": [{"type": "BONUS_SPEED", "value": 10, "condition": "not_wearing_heavy_armor"}]}
+      ],
+      "6": [
+        {"name": "Path Feature", "description": "Feature from your chosen Primal Path."}
+      ],
+      "7": [
+        {"name": "Feral Instinct", "description": "By 7th level, your instincts are so honed that you have advantage on initiative rolls. Additionally, if you are surprised at the beginning of combat and aren’t incapacitated, you can act normally on your first turn if you enter your rage before doing anything else on that turn.",
+         "effects": [
+            {"type": "ADVANTAGE_ON_INITIATIVE", "notes": "Grants advantage on initiative rolls."},
+            {"type": "CUSTOM_MECHANIC", "name": "Feral Instinct Surprise Rage", "details": "If surprised and not incapacitated, can act normally on first turn by raging first. Requires surprise and initiative system integration."}
+        ]}
+      ],
+      "8": [
+        {"name": "Ability Score Improvement", "description": "Standard ASI.", "effects": [{"type": "ASI"}]}
+      ],
+      "9": [
+        {"name": "Brutal Critical (1 die)", "description": "Beginning at 9th level, you can roll one additional weapon damage die when determining the extra damage for a critical hit with a melee attack.",
+        "effects": [{"type": "ADD_CRIT_DICE", "dice_count": 1, "weapon_category": "melee"}]}
+      ],
+      "10": [
+        {"name": "Path Feature", "description": "Feature from your chosen Primal Path."}
+      ],
+      "11": [
+        {"name": "Relentless Rage", "description": "Starting at 11th level, your rage can keep you fighting despite grievous wounds. If you drop to 0 hit points while you’re raging and don’t die outright, you can make a DC 10 Constitution saving throw. If you succeed, you drop to 1 hit point instead. Each time you use this feature after the first, the DC increases by 5. When you finish a short or long rest, the DC resets to 10.",
+        "effects": [
+            {"type": "TRIGGERED_ABILITY", "name": "Relentless Rage", "trigger_condition": "on_reduce_to_zero_hp_while_raging_not_killed_outright",
+             "effect_details": {"action": "CON_save_to_1hp", "initial_dc": 10, "dc_increase_on_success": 5, "dc_reset_on_rest": ["short", "long"]},
+             "notes": "Relentless Rage. This is a passive trigger, not an action ability."}
+        ]}
+      ],
+      "12": [
+        {"name": "Ability Score Improvement", "description": "Standard ASI.", "effects": [{"type": "ASI"}]}
+      ],
+      "13": [
+        {"name": "Brutal Critical (2 dice)", "description": "At 13th level, you can roll two additional weapon damage dice when determining the extra damage for a critical hit with a melee attack.", "override_feature_name": "Brutal Critical", "effects": [{"type": "ADD_CRIT_DICE", "dice_count": 2, "weapon_category": "melee"}]}
+      ],
+      "14": [
+        {"name": "Path Feature", "description": "Feature from your chosen Primal Path."}
+      ],
+      "15": [
+        {"name": "Persistent Rage", "description": "Beginning at 15th level, your rage is so fierce that it ends early only if you fall unconscious or if you choose to end it.",
+        "effects": [
+            {"type": "MODIFY_GRANTED_ABILITY_EFFECT", "target_ability_name": "Rage", "target_active_effect_name": "Raging", "remove_end_condition": "turn_ends_and_no_attack_or_damage_since_last_turn"}
+        ]}
+      ],
+      "16": [
+        {"name": "Ability Score Improvement", "description": "Standard ASI.", "effects": [{"type": "ASI"}]}
+      ],
+      "17": [
+        {"name": "Brutal Critical (3 dice)", "description": "At 17th level, you can roll three additional weapon damage dice when determining the extra damage for a critical hit with a melee attack.", "override_feature_name": "Brutal Critical", "effects": [{"type": "ADD_CRIT_DICE", "dice_count": 3, "weapon_category": "melee"}]}
+      ],
+      "18": [
+        {"name": "Indomitable Might", "description": "Beginning at 18th level, if your total for a Strength check is less than your Strength score, you can use that score in place of the total.",
+        "effects": [
+            {"type": "SET_MINIMUM_ABILITY_CHECK_RESULT_TO_SCORE", "ability": "STR", "notes": "Indomitable Might. Applied by ability check resolution system."}
+        ]}
+      ],
+      "19": [
+        {"name": "Ability Score Improvement", "description": "Standard ASI.", "effects": [{"type": "ASI"}]}
+      ],
+      "20": [
+        {"name": "Primal Champion", "description": "At 20th level, you embody the power of the wilds. Your Strength and Constitution scores increase by 4. Your maximum for those scores is now 24.",
+        "effects": [
+            {"type": "BONUS_STAT", "stat": "STR", "value": 4},
+            {"type": "BONUS_STAT", "stat": "CON", "value": 4},
+            {"type": "SET_STAT_MAXIMUM", "stat": "STR", "value": 24},
+            {"type": "SET_STAT_MAXIMUM", "stat": "CON", "value": 24}
+        ]}
+      ]
     },
     "subclasses": {
       "Path of the Berserker": {"description": "...", "features_by_level": {"3":[], "6":[], "10":[], "14":[]}},
@@ -49,7 +178,6 @@
     }
   },
   "Bard": {
-    "hit_die": 8,
     "primary_ability": ["CHA"],
     "saving_throw_proficiencies": ["DEX", "CHA"],
     "armor_proficiencies": ["light"],
@@ -68,15 +196,318 @@
     "cantrips_known_by_level": {"1":2, "4":3, "10":4},
     "spells_known_by_level": {"1":4, "2":5, "3":6, "4":7, "5":8, "6":9, "7":10, "8":11, "9":12, "10":14, "11":15, "12":15, "13":16, "14":18, "15":19, "16":19, "17":20, "18":22, "19":22, "20":22},
     "asi_levels": [4, 8, 12, 16, 19],
-    "features_by_level": {
-      "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Bardic Inspiration (d6)", "description": "..."}],
-      "2": [{"name": "Jack of All Trades", "description": "..."}, {"name": "Song of Rest (d6)", "description": "..."}],
-      "3": [{"name": "Bard College", "description": "..."}, {"name": "Expertise (1)", "description": "..."}],
-      "20": [{"name": "Superior Inspiration", "description": "..."}]
-    },
     "subclasses": {
-      "College of Lore": {"description": "...", "features_by_level": {"3":[], "6":[], "14":[]}},
-      "College of Valor": {"description": "...", "features_by_level": {"3":[], "6":[], "14":[]}}
+      "College of Lore": {
+        "description": "Bards of the College of Lore know something about most things, collecting bits of knowledge from sources as diverse as scholarly tomes and peasant tales.",
+        "features_by_level": {
+          "3": [
+            {
+              "name": "Bonus Proficiencies (Lore)",
+              "description": "When you join the College of Lore at 3rd level, you gain proficiency in three skills of your choice.",
+              "effects": [{"type": "GRANT_PROFICIENCY_CHOICE", "category": "skill", "count": 3, "notes": "College of Lore - Choose 3 skill proficiencies."}]
+            },
+            {
+              "name": "Cutting Words",
+              "description": "Also at 3rd level, you learn how to use your wit to distract, confuse, and otherwise sap the confidence and competence of others. When a creature that you can see within 60 feet of you makes an attack roll, an ability check, or a damage roll, you can use your reaction to expend one of your uses of Bardic Inspiration, roll the Bardic Inspiration die, and subtract the number rolled from the creature's roll. You can choose to use this feature after the creature makes its roll, but before the DM determines whether the attack roll or ability check succeeds or fails, or before the creature deals its damage. The creature is immune if it can't hear you or if it's immune to being charmed.",
+              "effects": [
+                {"type": "GRANT_REACTION_ABILITY", "name": "Cutting Words",
+                 "trigger_condition": "enemy_seen_60ft_makes_attack_check_damage_roll",
+                 "cost": {"resource": "Bardic Inspiration", "amount": 1},
+                 "effect_details": {
+                    "type": "SUBTRACT_BARDIC_DIE_FROM_TARGET_ROLL", "die_source": "BardicInspiration",
+                    "target_roll_types": ["attack_roll", "ability_check", "damage_roll"],
+                    "target_must_hear_not_charm_immune": true
+                 },
+                 "notes": "Uses Bardic Inspiration die. Complex reaction."
+                }
+              ]
+            }
+          ],
+          "6": [
+            {
+              "name": "Additional Magical Secrets (Lore)",
+              "description": "At 6th level, you learn two spells of your choice from any class. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. The chosen spells count as bard spells for you but don’t count against the number of bard spells you know.",
+              "effects": [
+                {"type": "GRANT_SPELL_CHOICE", "count": 2, "max_level_formula": "bard_max_castable_spell_level", "from_spell_list_source": "any", "notes": "College of Lore - Additional Magical Secrets. These do not count against spells known."}
+              ]
+            }
+          ],
+          "14": [
+            {
+              "name": "Peerless Skill",
+              "description": "Starting at 14th level, when you make an ability check, you can expend one use of Bardic Inspiration. Roll a Bardic Inspiration die and add the number rolled to your ability check. You can choose to do so after you roll the die for the ability check, but before the DM tells you whether you succeed or fail.",
+              "effects": [
+                {"type": "PASSIVE_ABILITY", "name": "Peerless Skill",
+                 "details": "Can expend Bardic Inspiration use to add die to own ability check.",
+                 "cost": {"resource": "Bardic Inspiration", "amount": 1},
+                 "notes": "Activated on ability check, before outcome known."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "College of Valor": {
+        "description": "Bards of the College of Valor are daring skalds whose tales keep alive the memory of the great heroes of the past, and thereby inspire a new generation of heroes.",
+        "features_by_level": {
+          "3": [
+            {
+              "name": "Bonus Proficiencies (Valor)",
+              "description": "When you join the College of Valor at 3rd level, you gain proficiency with medium armor, shields, and martial weapons.",
+              "effects": [
+                {"type": "GRANT_PROFICIENCY", "category": "armor_group", "name": "medium"},
+                {"type": "GRANT_PROFICIENCY", "category": "armor_group", "name": "shields"},
+                {"type": "GRANT_PROFICIENCY", "category": "weapon_group", "name": "martial"}
+              ]
+            },
+            {
+              "name": "Combat Inspiration",
+              "description": "Also at 3rd level, you learn to inspire others in battle. A creature that has a Bardic Inspiration die from you can roll that die and add the number rolled to a weapon damage roll it just made. Alternatively, when an attack roll is made against the creature, it can use its reaction to roll the Bardic Inspiration die and add the number rolled to its AC against that attack, after seeing the roll but before knowing whether it hits or misses.",
+              "override_feature_name": "Bardic Inspiration",
+              "notes": "Modifies Bardic Inspiration. The target can use the die for weapon damage OR AC (reaction).",
+              "effects": [
+                {
+                  "type": "GRANT_ACTION_ABILITY", "name": "Bardic Inspiration", "original_name_for_tracking": "Bardic Inspiration",
+                  "action_type": "bonus_action", "uses_based_on_stat": "CHA", "minimum_uses": 1,
+                  "refresh_on": "long_rest",
+                  "target_type": "ally_within_60ft_can_hear_not_self",
+                  "effect_details": {
+                    "type": "APPLY_TARGET_BUFF",
+                    "buff_name": "CombatInspiration_d6",
+                    "duration_minutes": 10,
+                    "max_stacks_on_target": 1,
+                    "granted_effect": {
+                        "type": "CONSUMABLE_BONUS_DICE_CHOICE", "dice_source": "BardicInspiration",
+                        "choices": [
+                            {"option_name": "Add to Roll", "applies_to_roll": ["ability_check", "attack_roll", "saving_throw"], "trigger": "target_choice_before_outcome"},
+                            {"option_name": "Add to Damage", "applies_to_roll": ["weapon_damage_dealt_self"], "trigger": "on_weapon_damage_dealt"},
+                            {"option_name": "Add to AC", "applies_to_roll": ["ac_versus_one_attack"], "trigger": "on_being_attacked_reaction", "action_cost_target": "reaction"}
+                        ]
+                    }
+                  },
+                  "notes": "Valor Bard version of Inspiration. Die type scales with main BI feature."
+                }
+              ]
+            }
+          ],
+          "6": [
+            {
+              "name": "Extra Attack (Valor)",
+              "description": "Starting at 6th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+              "effects": [{"type": "SET_EXTRA_ATTACKS", "value": 1, "notes": "Valor Bard Extra Attack"}]
+            }
+          ],
+          "14": [
+            {
+              "name": "Battle Magic",
+              "description": "At 14th level, you have mastered the art of weaving spellcasting and weapon use into a single harmonious act. When you use your action to cast a bard spell, you can make one weapon attack as a bonus action.",
+              "effects": [{"type": "GRANT_BONUS_ACTION_ATTACK_ON_SPELLCAST", "spell_type_trigger": "bard_spell", "notes": "Battle Magic"}]
+            }
+          ]
+        }
+      }
+    },
+    "features_by_level": {
+      "1": [
+        {"name": "Spellcasting", "description": "Standard Bard spellcasting."},
+        {
+          "name": "Bardic Inspiration",
+          "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the DM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time. You can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest.",
+          "effects": [
+            {
+              "type": "GRANT_ACTION_ABILITY",
+              "name": "Bardic Inspiration", "original_name_for_tracking": "Bardic Inspiration",
+              "action_type": "bonus_action",
+              "uses_based_on_stat": "CHA", "minimum_uses": 1,
+              "refresh_on": "long_rest",
+              "target_type": "ally_within_60ft_can_hear_not_self",
+              "effect_details": {
+                "type": "APPLY_TARGET_BUFF",
+                "buff_name": "BardicInspiration_d6",
+                "duration_minutes": 10,
+                "max_stacks_on_target": 1,
+                "granted_effect": {"type": "CONSUMABLE_BONUS_DICE", "dice": "1d6", "applies_to_roll": ["ability_check", "attack_roll", "saving_throw"], "trigger": "target_choice_before_outcome"}
+              },
+              "notes": "Bardic Inspiration die is d6 at L1. Uses = CHA mod (min 1). Target gets the die."
+            }
+          ]
+        }
+      ],
+      "2": [
+        {
+          "name": "Jack of All Trades",
+          "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn’t already include your proficiency bonus.",
+          "effects": [{"type": "JACK_OF_ALL_TRADES", "notes": "Applies to ability checks that don't already include proficiency bonus."}]
+        },
+        {
+          "name": "Song of Rest (d6)",
+          "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points.",
+          "effects": [{"type": "SONG_OF_REST", "dice": "1d6", "notes": "Extra healing on short rest if HD are spent. Ally effect deferred."}]
+        }
+      ],
+      "3": [
+        {"name": "Bard College", "description": "At 3rd level, you delve into the advanced techniques of a bard college of your choice."},
+        {
+          "name": "Expertise (Bard L3)",
+          "description": "At 3rd level, choose two of your skill proficiencies. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies.",
+          "effects": [{"type": "GRANT_EXPERTISE_CHOICE", "count": 2, "from_category": "skill_proficiencies", "notes": "Choose 2 skill proficiencies for Expertise."}]
+        }
+      ],
+      "4": [{"name": "Ability Score Improvement", "description": "Standard ASI."}],
+      "5": [
+        {
+          "name": "Bardic Inspiration (d8)",
+          "description": "Your Bardic Inspiration die changes to a d8.",
+          "override_feature_name": "Bardic Inspiration",
+          "effects": [
+            {
+              "type": "GRANT_ACTION_ABILITY", "name": "Bardic Inspiration", "original_name_for_tracking": "Bardic Inspiration",
+              "action_type": "bonus_action", "uses_based_on_stat": "CHA", "minimum_uses": 1,
+              "refresh_on": "short_or_long_rest",
+              "target_type": "ally_within_60ft_can_hear_not_self",
+              "effect_details": {
+                "type": "APPLY_TARGET_BUFF", "buff_name": "BardicInspiration_d8", "duration_minutes": 10,
+                "max_stacks_on_target": 1,
+                "granted_effect": {"type": "CONSUMABLE_BONUS_DICE", "dice": "1d8", "applies_to_roll": ["ability_check", "attack_roll", "saving_throw"], "trigger": "target_choice_before_outcome"}
+              }
+            }
+          ]
+        },
+        {
+          "name": "Font of Inspiration",
+          "description": "Beginning when you reach 5th level, you regain all of your expended uses of Bardic Inspiration when you finish a short or long rest.",
+          "notes": "This feature modifies the 'Bardic Inspiration' ability to refresh on short_or_long_rest. The override above handles this."
+        }
+      ],
+      "6": [
+        {
+          "name": "Countercharm",
+          "description": "At 6th level, you gain the ability to use musical notes or words of power to disrupt mind-influencing effects. As an action, you can start a performance that lasts until the end of your next turn. During that time, you and any friendly creatures within 30 feet of you have advantage on saving throws against being frightened or charmed. A creature must be able to hear you to gain this benefit. The performance ends early if you are incapacitated or silenced or if you voluntarily end it (no action required).",
+          "effects": [
+            {
+              "type": "GRANT_ACTION_ABILITY", "name": "Countercharm", "action_type": "action",
+              "uses": 1, "refresh_on": "never_expended_but_action_cost",
+              "effect_details": {
+                "type": "APPLY_AREA_AURA_EFFECT", "radius_feet": 30, "targets": "allies_in_range_can_hear",
+                "duration_caster_turns": 1,
+                "aura_granted_effects": [
+                  {"type": "ADVANTAGE", "roll_type": "saving_throw", "vs_condition_types": ["Frightened", "Charmed"]}
+                ],
+                "end_conditions_aura": ["caster_incapacitated", "caster_silenced", "caster_voluntarily_ends"]
+              },
+              "notes": "Grants advantage vs frightened/charmed to allies in 30ft aura. Complex effect."
+            }
+          ]
+        }
+      ],
+      "8": [{"name": "Ability Score Improvement", "description": "Standard ASI."}],
+      "9": [
+        {
+          "name": "Song of Rest (d8)",
+          "override_feature_name": "Song of Rest",
+          "description": "Your Song of Rest die changes to a d8.",
+          "effects": [{"type": "SONG_OF_REST", "dice": "1d8", "notes": "Song of Rest now uses d8."}]
+        }
+      ],
+      "10": [
+        {
+          "name": "Bardic Inspiration (d10)",
+          "description": "Your Bardic Inspiration die changes to a d10.",
+          "override_feature_name": "Bardic Inspiration",
+           "effects": [
+            {
+              "type": "GRANT_ACTION_ABILITY", "name": "Bardic Inspiration", "original_name_for_tracking": "Bardic Inspiration",
+              "action_type": "bonus_action", "uses_based_on_stat": "CHA", "minimum_uses": 1,
+              "refresh_on": "short_or_long_rest",
+              "target_type": "ally_within_60ft_can_hear_not_self",
+              "effect_details": {
+                "type": "APPLY_TARGET_BUFF", "buff_name": "BardicInspiration_d10", "duration_minutes": 10,
+                "max_stacks_on_target": 1,
+                "granted_effect": {"type": "CONSUMABLE_BONUS_DICE", "dice": "1d10", "applies_to_roll": ["ability_check", "attack_roll", "saving_throw"], "trigger": "target_choice_before_outcome"}
+              }
+            }
+          ]
+        },
+        {
+          "name": "Expertise (Bard L10)",
+          "description": "At 10th level, choose two more of your skill proficiencies. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies.",
+          "override_feature_name": "Expertise (Bard L3)",
+          "effects": [{"type": "GRANT_EXPERTISE_CHOICE", "count": 2, "from_category": "skill_proficiencies", "notes": "Choose 2 more skill proficiencies for Expertise."}]
+        },
+        {
+          "name": "Magical Secrets (L10)",
+          "description": "By 10th level, you have plundered magical knowledge from a wide spectrum of disciplines. Choose two spells from any classes, including this one. A spell you choose must be of a level you can cast, as shown on the Bard table, or a cantrip. The chosen spells count as bard spells for you and are included in the number in the Spells Known column of the Bard table.",
+          "effects": [
+            {"type": "GRANT_SPELL_CHOICE", "count": 2, "max_level_formula": "bard_max_castable_spell_level", "from_spell_list_source": "any", "notes": "Choose 2 spells of up to your max castable Bard spell level from any class list."}
+          ]
+        }
+      ],
+      "12": [{"name": "Ability Score Improvement", "description": "Standard ASI."}],
+      "13": [
+        {
+          "name": "Song of Rest (d10)",
+          "override_feature_name": "Song of Rest",
+          "description": "Your Song of Rest die changes to a d10.",
+          "effects": [{"type": "SONG_OF_REST", "dice": "1d10", "notes": "Song of Rest now uses d10."}]
+        }
+      ],
+      "14": [
+        {
+          "name": "Magical Secrets (L14)",
+          "override_feature_name": "Magical Secrets (L10)",
+          "description": "Choose two additional spells from any class, up to the level you can cast.",
+           "effects": [
+            {"type": "GRANT_SPELL_CHOICE", "count": 2, "max_level_formula": "bard_max_castable_spell_level", "from_spell_list_source": "any", "notes": "Choose 2 more spells."}
+          ]
+        }
+      ],
+      "15": [
+        {
+          "name": "Bardic Inspiration (d12)",
+          "description": "Your Bardic Inspiration die changes to a d12.",
+          "override_feature_name": "Bardic Inspiration",
+           "effects": [
+            {
+              "type": "GRANT_ACTION_ABILITY", "name": "Bardic Inspiration", "original_name_for_tracking": "Bardic Inspiration",
+              "action_type": "bonus_action", "uses_based_on_stat": "CHA", "minimum_uses": 1,
+              "refresh_on": "short_or_long_rest",
+              "target_type": "ally_within_60ft_can_hear_not_self",
+              "effect_details": {
+                "type": "APPLY_TARGET_BUFF", "buff_name": "BardicInspiration_d12", "duration_minutes": 10,
+                "max_stacks_on_target": 1,
+                "granted_effect": {"type": "CONSUMABLE_BONUS_DICE", "dice": "1d12", "applies_to_roll": ["ability_check", "attack_roll", "saving_throw"], "trigger": "target_choice_before_outcome"}
+              }
+            }
+          ]
+        }
+      ],
+      "16": [{"name": "Ability Score Improvement", "description": "Standard ASI."}],
+      "17": [
+        {
+          "name": "Song of Rest (d12)",
+          "override_feature_name": "Song of Rest",
+          "description": "Your Song of Rest die changes to a d12.",
+          "effects": [{"type": "SONG_OF_REST", "dice": "1d12", "notes": "Song of Rest now uses d12."}]
+        }
+      ],
+      "18": [
+         {
+          "name": "Magical Secrets (L18)",
+          "override_feature_name": "Magical Secrets (L10)",
+          "description": "Choose two additional spells from any class, up to the level you can cast.",
+           "effects": [
+            {"type": "GRANT_SPELL_CHOICE", "count": 2, "max_level_formula": "bard_max_castable_spell_level", "from_spell_list_source": "any", "notes": "Choose 2 more spells."}
+          ]
+        }
+      ],
+      "19": [{"name": "Ability Score Improvement", "description": "Standard ASI."}],
+      "20": [
+        {
+          "name": "Superior Inspiration",
+          "description": "At 20th level, when you roll initiative and have no uses of Bardic Inspiration left, you regain one use.",
+          "effects": [{"type": "TRIGGERED_ABILITY", "name": "Superior Inspiration", "trigger_condition": "on_initiative_roll_if_no_bardic_inspiration_uses", "effect_details": {"action": "regain_one_use", "ability_name_to_regain": "Bardic Inspiration"}, "notes": "Regain 1 Bardic Inspiration if none left at initiative."}]
+        }
+      ]
     }
   },
   "Cleric": {
@@ -90,13 +521,98 @@
     "cantrips_known_by_level": {"1":3, "4":4, "10":5},
     "asi_levels": [4, 8, 12, 16, 19],
     "features_by_level": {
-      "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Divine Domain", "description": "..."}],
-      "2": [{"name": "Channel Divinity (1/rest)", "description": "..."}],
+      "1": [
+        {"name": "Spellcasting", "description": "Standard Cleric spellcasting."},
+        {"name": "Divine Domain", "description": "Choose one domain related to your deity. This choice grants you domain spells and other features."}
+      ],
+      "2": [
+        {
+          "name": "Channel Divinity",
+          "original_name_for_tracking": "Channel Divinity Uses",
+          "description": "You gain the ability to channel divine energy. You have one use of this feature. You regain expended uses when you finish a short or long rest.",
+          "uses": 1, "refresh_on": "short_or_long_rest",
+          "notes": "This is the resource pool for various Channel Divinity options."
+        },
+        {
+          "name": "Channel Divinity: Turn Undead",
+          "description": "As an action, you present your holy symbol and speak a prayer censuring the undead. Each undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes any damage.",
+          "effects": [
+            {"type": "GRANT_ACTION_ABILITY", "name": "Turn Undead", "action_type": "action", "uses_resource": "Channel Divinity Uses",
+             "effect_details": {"type": "AREA_EFFECT_SAVE_OR_CONDITION", "radius_feet": 30, "targets": "undead_can_see_or_hear", "save_stat": "WIS", "condition_on_fail": "Turned", "duration_minutes": 1, "end_condition_on_damage": true},
+             "notes": "Uses one charge of Channel Divinity."}
+          ]
+        }
+      ],
+      "5": [
+        {"name": "Destroy Undead (CR 1/2)", "description": "When an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below 1/2.", "effects": [{"type": "PASSIVE_ABILITY", "modifies_ability": "Turn Undead", "destroy_undead_cr_threshold": 0.5}]}
+      ],
+      "6": [
+        {"name": "Channel Divinity (2 uses)", "override_feature_name":"Channel Divinity", "original_name_for_tracking": "Channel Divinity Uses", "description": "You can use Channel Divinity twice between rests.", "uses": 2, "refresh_on": "short_or_long_rest"}
+      ],
+      "8": [
+        {"name": "Destroy Undead (CR 1)", "override_feature_name":"Destroy Undead (CR 1/2)", "description": "Destroy Undead CR increases to 1.", "effects": [{"type": "PASSIVE_ABILITY", "modifies_ability": "Turn Undead", "destroy_undead_cr_threshold": 1}]}
+      ],
+      "10": [{"name": "Divine Intervention", "description": "Beginning at 10th level, you can call on your deity to intervene on your behalf when your need is great."}],
+      "11": [
+        {"name": "Destroy Undead (CR 2)", "override_feature_name":"Destroy Undead (CR 1/2)", "description": "Destroy Undead CR increases to 2.", "effects": [{"type": "PASSIVE_ABILITY", "modifies_ability": "Turn Undead", "destroy_undead_cr_threshold": 2}]}
+      ],
+      "14": [
+        {"name": "Destroy Undead (CR 3)", "override_feature_name":"Destroy Undead (CR 1/2)", "description": "Destroy Undead CR increases to 3.", "effects": [{"type": "PASSIVE_ABILITY", "modifies_ability": "Turn Undead", "destroy_undead_cr_threshold": 3}]}
+      ],
+      "17": [
+        {"name": "Destroy Undead (CR 4)", "override_feature_name":"Destroy Undead (CR 1/2)", "description": "Destroy Undead CR increases to 4.", "effects": [{"type": "PASSIVE_ABILITY", "modifies_ability": "Turn Undead", "destroy_undead_cr_threshold": 4}]}
+      ],
+      "18": [
+        {"name": "Channel Divinity (3 uses)", "override_feature_name":"Channel Divinity", "original_name_for_tracking": "Channel Divinity Uses", "description": "You can use Channel Divinity three times between rests.", "uses": 3, "refresh_on": "short_or_long_rest"}
+      ],
       "20": [{"name": "Divine Intervention Improvement", "description": "..."}]
     },
     "subclasses": {
-      "Life Domain": {"description": "...", "features_by_level": {"1":[], "2":[], "6":[], "8":[], "17":[]}},
-      "Light Domain": {"description": "...", "features_by_level": {"1":[], "2":[], "6":[], "8":[], "17":[]}}
+      "Life Domain": {
+        "description": "The Life domain focuses on the vibrant positive energy – one of the fundamental forces of the universe – that sustains all life.",
+        "domain_spells": {
+            "1": ["bless", "cure_wounds"],
+            "3": ["lesser_restoration", "spiritual_weapon"],
+            "5": ["beacon_of_hope", "revivify"],
+            "7": ["death_ward", "guardian_of_faith"],
+            "9": ["mass_cure_wounds", "raise_dead"]
+        },
+        "features_by_level": {
+            "1": [
+                {"name": "Bonus Proficiency (Life)", "description": "You gain proficiency with heavy armor.", "effects": [{"type": "GRANT_PROFICIENCY", "category": "armor_group", "name": "heavy"}]},
+                {"name": "Disciple of Life", "description": "Your healing spells are more effective. Whenever you use a spell of 1st level or higher to restore hit points to a creature, the creature regains additional hit points equal to 2 + the spell’s level.", "effects": [{"type": "PASSIVE_ABILITY", "name": "Disciple of Life", "bonus_hp_flat": 2, "bonus_hp_per_spell_level": 1, "trigger_spell_level_min": 1, "notes": "Bonus healing to target when casting healing spell."}]}
+            ],
+            "2": [{"name": "Channel Divinity: Preserve Life", "description": "As an action, you present your holy symbol and evoke healing energy that can restore a total number of hit points equal to five times your cleric level. Choose any creatures within 30 feet of you, and divide these hit points among them. This feature can restore a creature to no more than half of its hit point maximum. You can’t use this feature on an undead or a construct."}],
+            "6": [
+                {"name": "Blessed Healer", "description": "Beginning at 6th level, the healing spells you cast on others heal you as well. When you cast a spell of 1st level or higher that restores hit points to a creature other than you, you regain hit points equal to 2 + the spell’s level.", "effects": [{"type": "PASSIVE_ABILITY", "name": "Blessed Healer", "self_heal_flat": 2, "self_heal_per_spell_level": 1, "trigger_spell_level_min": 1, "condition": "target_is_other", "notes": "Self-heal when healing others."}]}
+            ],
+            "8": [
+                {"name": "Divine Strike (Life)", "description": "At 8th level, you gain the ability to infuse your weapon strikes with divine energy. Once on each of your turns when you hit a creature with a weapon attack, you can cause the attack to deal an extra 1d8 radiant damage to the target. When you reach 14th level, the extra damage increases to 2d8.",
+                 "effects": [{"type": "BONUS_DAMAGE_ON_WEAPON_HIT_ONCE_PER_TURN", "damage_dice": "1d8", "damage_type": "radiant", "level_scaling_dice": {"14": "2d8"}, "notes": "Divine Strike - Life Domain"}]}
+            ],
+            "17": [{"name": "Supreme Healing", "description": "Starting at 17th level, when you would normally roll one or more dice to restore hit points with a spell, you instead use the highest number possible for each die."}]
+        }
+      },
+      "Light Domain": {
+        "description": "Gods of light – including Helios, Lathander, and Pholtus – promote the ideals of rebirth and renewal, truth, vigilance, and beauty, often using the symbol of the Sun.",
+        "domain_spells": {
+            "1": ["burning_hands", "faerie_fire"],
+            "3": ["flaming_sphere", "scorching_ray"],
+            "5": ["daylight", "fireball"],
+            "7": ["guardian_of_faith", "wall_of_fire"],
+            "9": ["flame_strike", "scrying"]
+        },
+        "features_by_level": {
+            "1": [
+                {"name": "Bonus Cantrip (Light)", "description": "When you choose this domain at 1st level, you gain the light cantrip if you don’t already know it.", "effects": [{"type": "GRANT_SPELL", "spell_id": "light_cantrip", "if_not_known": true}]},
+                {"name": "Warding Flare", "description": "Also at 1st level, you can interpose divine light between yourself and an attacking enemy. When you are attacked by a creature within 30 feet of you that you can see, you can use your reaction to impose disadvantage on the attack roll, causing light to flare before the attacker before it hits or misses. An attacker that can’t be blinded is immune to this feature. You can use this feature a number of times equal to your Wisdom modifier (a minimum of once). You regain all expended uses when you finish a long rest."}
+            ],
+            "2": [{"name": "Channel Divinity: Radiance of the Dawn", "description": "Starting at 2nd level, you can use your Channel Divinity to harness sunlight, banishing darkness and dealing radiant damage to your foes."}],
+            "6": [{"name": "Improved Flare", "description": "Starting at 6th level, you can also use your Warding Flare feature when a creature that you can see within 30 feet of you attacks a creature other than you."}],
+            "8": [{"name": "Potent Spellcasting (Light)", "description": "Starting at 8th level, you add your Wisdom modifier to the damage you deal with any cleric cantrip."}],
+            "17": [{"name": "Corona of Light", "description": "Starting at 17th level, you can use your action to activate an aura of sunlight that lasts for 1 minute or until you dismiss it using another action. You emit bright light in a 60-foot radius and dim light for an additional 30 feet. Your enemies in the bright light have disadvantage on saving throws against any spell that deals fire or radiant damage."}]
+        }
+      }
     }
   },
   "Druid": {
@@ -335,7 +851,31 @@
       "20": [{"name": "Perfect Self", "description": "..."}]
     },
     "subclasses": {
-      "Way of the Open Hand": {"description": "...", "features_by_level": {"3":[], "6":[], "11":[], "17":[]}},
+      "Path of the Berserker": {
+        "description": "The Path of the Berserker is a path of untamed fury, slick with blood. As you enter the berserker’s rage, you thrill in the chaos of battle, heedless of your own health or well-being.",
+        "features_by_level": {
+          "3": [{
+            "name": "Frenzy",
+            "description": "Starting when you choose this path at 3rd level, you can go into a frenzy when you rage. If you do so, for the duration of your rage you can make a single melee weapon attack as a bonus action on each of your turns after this one. When your rage ends, you suffer one level of exhaustion.",
+            "effects": [{"type": "MODIFY_ABILITY_EFFECT", "ability_name": "Rage", "adds_option": {"name": "Frenzy", "bonus_action_attack": true, "on_rage_end_effect": {"type": "APPLY_CONDITION", "condition": "Exhaustion", "level": 1}}}]
+          }],
+          "6": [{
+            "name": "Mindless Rage",
+            "description": "Beginning at 6th level, you can’t be charmed or frightened while raging. If you are charmed or frightened when you enter your rage, the effect is suspended for the duration of the rage.",
+            "effects": [{"type": "CONDITION_IMMUNITY", "conditions": ["Charmed", "Frightened"], "active_while_raging": true}]
+          }],
+          "10": [{
+            "name": "Intimidating Presence",
+            "description": "Beginning at 10th level, you can use your action to frighten someone with your menacing presence. When you do so, choose one creature that you can see within 30 feet of you. If the creature can see or hear you, it must succeed on a Wisdom saving throw (DC equal to 8 + your proficiency bonus + your Charisma modifier) or be frightened of you until the end of your next turn. On subsequent turns, you can use your action to extend the duration of this effect on the frightened creature until the end of your next turn. This effect ends if the creature ends its turn out of line of sight or more than 60 feet away from you.",
+            "effects": [{"type": "GRANT_ACTION_ABILITY", "name": "Intimidating Presence", "action_type": "action", "target_type": "creature_can_see_hear", "range": "30ft", "effect_details": {"type": "TARGET_SAVE_OR_CONDITION", "save_stat": "WIS", "dc_formula": "8 + prof_bonus + CHA_mod", "condition_on_fail": "Frightened", "condition_duration_formula": "end_of_caster_next_turn", "end_conditions": ["target_ends_turn_out_of_line_of_sight", "target_ends_turn_gt_60ft_away"]}}]
+          }],
+          "14": [{
+            "name": "Retaliation",
+            "description": "Starting at 14th level, when you take damage from a creature that is within 5 feet of you, you can use your reaction to make a melee weapon attack against that creature.",
+            "effects": [{"type": "GRANT_REACTION_ABILITY", "name": "Retaliation", "trigger_condition": "take_damage_from_creature_within_5ft", "effect_details": {"type": "MAKE_MELEE_WEAPON_ATTACK", "target": "triggering_creature"}}]
+          }]
+        }
+      },
       "Way of Shadow": {"description": "...", "features_by_level": {"3":[], "6":[], "11":[], "17":[]}}
     }
   },
@@ -526,8 +1066,15 @@
         }
     ],
     "asi_levels": [4, 8, 12, 16, 19],
+    "spells_learned_on_level_up": 2, # Wizards learn 2 spells per level
     "features_by_level": {
-      "1": [{"name": "Spellcasting", "description": "..."}, {"name": "Arcane Recovery", "description": "..."}],
+      "1": [
+        {"name": "Spellcasting", "description": "..."},
+        {"name": "Arcane Recovery", "description": "..."},
+        {"name": "Initial Spellbook", "description": "You start with a spellbook containing six 1st-level wizard spells of your choice.", "effects": [
+            {"type": "GRANT_SPELL_CHOICE", "count": 6, "max_level": 1, "from_class_list": "Wizard", "notes": "Initial Wizard spellbook choices."}
+        ]}
+      ],
       "2": [{"name": "Arcane Tradition", "description": "..."}],
       "18": [{"name": "Spell Mastery", "description": "..."}],
       "20": [{"name": "Signature Spells", "description": "..."}]
@@ -538,3 +1085,5 @@
     }
   }
 }
+
+[end of server/data/classes.json]
