@@ -1,5 +1,8 @@
 import json
 import math # For floor
+import traceback # For detailed exception logging
+import random # For death messages
+from server.core.combat import roll_dice
 
 # Globals populated by load_game_data()
 CLASSES_DATA = {}
@@ -10,6 +13,7 @@ ITEMS_DATA = {}
 ANSI_BLUE = "\033[94m"
 ANSI_RED = "\033[91m"
 ANSI_GREEN = "\033[92m"
+ANSI_YELLOW = "\033[93m" # Added ANSI_YELLOW
 ANSI_RESET = "\033[0m"
 
 
@@ -41,24 +45,92 @@ class Player:
         EQUIPMENT_SLOT_LIGHT_SOURCE
     ]
     STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
+    ALL_SKILLS = [
+        "Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception",
+        "History", "Insight", "Intimidation", "Investigation", "Medicine",
+        "Nature", "Perception", "Performance", "Persuasion", "Religion",
+        "Sleight of Hand", "Stealth", "Survival"
+    ]
+    SKILL_TO_ABILITY_MAP = {
+        "Acrobatics": "DEX", "Animal Handling": "WIS", "Arcana": "INT",
+        "Athletics": "STR", "Deception": "CHA", "History": "INT",
+        "Insight": "WIS", "Intimidation": "CHA", "Investigation": "INT",
+        "Medicine": "WIS", "Nature": "INT", "Perception": "WIS",
+        "Performance": "CHA", "Persuasion": "CHA", "Religion": "INT",
+        "Sleight of Hand": "DEX", "Stealth": "DEX", "Survival": "WIS"
+    }
 
-    def __init__(self, user, player_class_name="Fighter", race_name="Human", name="Adventurer"):
+    def __init__(self, user, player_class_name="Fighter", race_name="Human", name="Adventurer", base_stats=None):
         self.user = user; self.name = name; self.player_class_name = player_class_name
-        self.race_name = race_name; self.level = 1; self.xp = 0; self.next_level_xp = 300
-        self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
+        self.race_name = race_name
+        self.level = 1; self.xp = 0; self.next_level_xp = 300
+
+        if base_stats: self.base_stats = base_stats.copy()
+        else: self.base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
+
         self.current_hp = 0; self.max_hp = 0; self.temporary_hp = 0
         self.current_mp = 0; self.max_mp = 0; self.spell_slots = {}
         self.equipment = {slot: None for slot in Player.ALL_EQUIPMENT_SLOTS}
-        self.inventory = [] # List of item data dictionaries or item IDs
-        self.room_id = "STARTING_ROOM_ID"
-        self.assign_standard_array({"STR":15,"DEX":14,"CON":13,"INT":12,"WIS":10,"CHA":8}, initial_setup=True)
-        self.recalculate_all_stats(full_heal=True)
+        self.inventory = []
+        self.room_id = "start"
+        self.skill_proficiencies = set()
+        self.used_abilities_this_rest = set()
+        self.has_taken_action_this_turn = False
+        self.spellcasting_ability = None
+
+        self.in_combat = False
+        self.target = None
+        self.is_dead = False
+        self.is_reloading = False # Flag for when player is using reload command
+
+        try:
+            if not (CLASSES_DATA and RACES_DATA): load_game_data()
+
+            class_data = CLASSES_DATA.get(self.player_class_name)
+            if class_data:
+                for skill in class_data.get("skill_proficiencies", []):
+                    self.skill_proficiencies.add(skill)
+                self.spellcasting_ability = class_data.get("spellcasting_ability")
+
+            base_race_data, sub_race_data = self._get_race_data_parts()
+            if base_race_data:
+                for trait in base_race_data.get("traits", []):
+                    if trait.get("name") == "Keen Senses" and "Perception" in Player.ALL_SKILLS :
+                        self.skill_proficiencies.add("Perception")
+                    if trait.get("name") == "Menacing" and "Intimidation" in Player.ALL_SKILLS:
+                        self.skill_proficiencies.add("Intimidation")
+            if sub_race_data:
+                 for trait in sub_race_data.get("traits", []): pass # Placeholder for subrace trait processing
+
+            self.recalculate_all_stats(full_heal=True)
+            print(f"[PLAYER_INIT_DEBUG] {self.name} __init__ completed successfully.")
+
+        except Exception as e:
+            print(f"!!! CRITICAL ERROR in Player.__init__ for {self.name} !!!")
+            print(f"Exception Type: {type(e)}")
+            print(f"Exception Args: {e.args}")
+            print(traceback.format_exc())
+            # Optionally, re-raise or handle more gracefully depending on how critical this is
+            # For now, just logging. The object might be in an inconsistent state.
+            # If self.user is set, could try to inform user, but that might also fail.
+
+    def _get_race_data_parts(self):
+        if not RACES_DATA: return None, None
+        for r_name, r_info in RACES_DATA.items():
+            if r_name == self.race_name:
+                return r_info, None
+            if "subraces" in r_info and self.race_name in r_info["subraces"]:
+                return r_info, r_info["subraces"][self.race_name]
+        return None, None
 
     def get_stat_score_racial_and_base(self, stat_name):
-        stat_name_upper = stat_name.upper(); score = self.base_stats.get(stat_name_upper, 10)
-        if RACES_DATA:
-            race_data = RACES_DATA.get(self.race_name)
-            if race_data: score += race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
+        stat_name_upper = stat_name.upper()
+        score = self.base_stats.get(stat_name_upper, 8)
+        base_race_data, sub_race_data = self._get_race_data_parts()
+        if base_race_data:
+            score += base_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
+        if sub_race_data:
+            score += sub_race_data.get("ability_score_increase", {}).get(stat_name_upper, 0)
         return score
 
     def get_stat_score(self, stat_name):
@@ -71,21 +143,26 @@ class Player:
     def get_stat_modifier(self, stat_name):
         return math.floor((self.get_stat_score(stat_name) - 10) / 2)
 
+    def get_skill_bonus(self, skill_name):
+        if skill_name not in Player.SKILL_TO_ABILITY_MAP: return 0
+        ability_stat = Player.SKILL_TO_ABILITY_MAP[skill_name]
+        modifier = self.get_stat_modifier(ability_stat)
+        prof_bonus = self.proficiency_bonus if skill_name in self.skill_proficiencies else 0
+        return modifier + prof_bonus
+
     def calculate_proficiency_bonus(self):
         if self.level < 5: return 2;
         if self.level < 9: return 3;
         if self.level < 13: return 4;
         if self.level < 17: return 5;
-        if self.level < 21: return 6;
-        if self.level < 25: return 7;
-        if self.level < 30: return 8;
-        if self.level < 40: return 9;
-        if self.level < 50: return 10;
-        if self.level < 60: return 11;
-        if self.level < 70: return 12;
-        if self.level < 80: return 13;
-        if self.level < 90: return 14;
-        return 15;
+        if self.level < 25: return 6;
+        if self.level < 35: return 7;
+        if self.level < 45: return 8;
+        if self.level < 55: return 9;
+        if self.level < 65: return 10;
+        if self.level < 75: return 11;
+        if self.level < 85: return 12;
+        return 13;
 
     def calculate_max_hp(self):
         if not CLASSES_DATA: return 10 + self.get_stat_modifier("CON")
@@ -94,18 +171,21 @@ class Player:
         hit_die = class_data.get("hit_die", 6); con_modifier = self.get_stat_modifier("CON"); max_hp_val = 0
         if self.level == 1: max_hp_val = hit_die + con_modifier
         else:
-            hp_per_level = max(1, math.ceil(hit_die / 2) + con_modifier)
+            avg_roll_plus_one = (hit_die // 2) + 1
+            hp_per_level = max(1, avg_roll_plus_one + con_modifier)
             max_hp_val = (hit_die + con_modifier) + (hp_per_level * (self.level - 1))
-        if RACES_DATA:
-            race_data = RACES_DATA.get(self.race_name, {})
-            if race_data and any(trait.get("name") == "Dwarven Toughness" for trait in race_data.get("traits",[])): max_hp_val += self.level
+        base_race_data, sub_race_data = self._get_race_data_parts()
+        racial_traits = []
+        if base_race_data and base_race_data.get("traits"): racial_traits.extend(base_race_data.get("traits"))
+        if sub_race_data and sub_race_data.get("traits"): racial_traits.extend(sub_race_data.get("traits"))
+        for trait in racial_traits:
+            if trait.get("name") == "Dwarven Toughness": max_hp_val += self.level; break
         for item_data in self.equipment.values():
             if item_data: max_hp_val += item_data.get("effects", {}).get("bonus_hp", 0)
         return max(1, max_hp_val)
 
     def calculate_ac(self):
-        dex_modifier = self.get_stat_modifier("DEX")
-        calculated_ac = 10 + dex_modifier
+        dex_modifier = self.get_stat_modifier("DEX"); calculated_ac = 10 + dex_modifier
         equipped_armor_data = self.equipment.get(Player.EQUIPMENT_SLOT_CHEST)
         if equipped_armor_data:
             props = equipped_armor_data.get("properties", {}); armor_type = props.get("armor_type")
@@ -113,9 +193,7 @@ class Player:
             if armor_type == "light": calculated_ac = base_ac_value + dex_modifier
             elif armor_type == "medium": calculated_ac = base_ac_value + min(dex_modifier, props.get("dex_cap_bonus", 2))
             elif armor_type == "heavy": calculated_ac = base_ac_value
-        total_bonus_ac_from_effects = 0
-        for item_data in self.equipment.values():
-            if item_data: total_bonus_ac_from_effects += item_data.get("effects", {}).get("bonus_ac", 0)
+        total_bonus_ac_from_effects = sum(item_data.get("effects", {}).get("bonus_ac", 0) for item_data in self.equipment.values() if item_data)
         calculated_ac += total_bonus_ac_from_effects
         return calculated_ac
 
@@ -131,10 +209,10 @@ class Player:
         return self.get_stat_modifier(ability_stat_name) + prof_bonus
 
     def get_spell_save_dc(self):
-        if not CLASSES_DATA: return 8
+        if not self.spellcasting_ability: return 8
         class_data = CLASSES_DATA.get(self.player_class_name)
-        if not class_data or not class_data.get("spellcasting_ability"): return 0
-        spell_mod = self.get_stat_modifier(class_data["spellcasting_ability"])
+        if not class_data : return 8
+        spell_mod = self.get_stat_modifier(self.spellcasting_ability)
         return 8 + self.proficiency_bonus + spell_mod
 
     def recalculate_all_stats(self, full_heal=False):
@@ -147,12 +225,6 @@ class Player:
             if self.current_hp <= 0 and self.max_hp > 0: self.current_hp = 1
         self.ac = self.calculate_ac()
 
-    def assign_standard_array(self, assignment_map, initial_setup=False):
-        if sorted(assignment_map.values())==sorted(self.STANDARD_ARRAY) and set(assignment_map.keys())==set(self.base_stats.keys()):
-            self.base_stats = assignment_map.copy()
-            if not initial_setup: self.recalculate_all_stats(full_heal=True)
-        else: print(f"Error: Invalid standard array assignment for {self.name}.")
-
     def add_xp(self, amount):
         self.xp += amount
         if self.xp >= self.next_level_xp: self.level_up()
@@ -160,7 +232,207 @@ class Player:
     def level_up(self):
         self.level += 1; self.next_level_xp = self.next_level_xp * 2
         self.recalculate_all_stats(full_heal=True)
-        print(f"Ding! {self.name} reached level {self.level}!")
+        if hasattr(self.user, 'send_message'):
+             self.user.send_message(f"{ANSI_GREEN}Ding! You reached level {self.level}!{ANSI_RESET}")
+
+    def get_class_feature(self, feature_name):
+        if not CLASSES_DATA: load_game_data()
+        class_data = CLASSES_DATA.get(self.player_class_name)
+        if not class_data: return None
+        found_feature = None
+        for level_int in range(1, self.level + 1):
+            level_str = str(level_int)
+            features_at_level = class_data.get("features_by_level", {}).get(level_str, [])
+            for feature in features_at_level:
+                if feature.get("name") == feature_name:
+                    found_feature = feature
+        return found_feature
+
+    def can_use_ability(self, ability_name):
+        feature_data = self.get_class_feature(ability_name)
+        if not feature_data: return False
+        uses = feature_data.get("uses")
+        refresh_on = feature_data.get("refresh_on")
+        if uses is not None and refresh_on is not None:
+            if ability_name in self.used_abilities_this_rest: return False
+        return True
+
+    def mark_ability_used(self, ability_name):
+        feature_data = self.get_class_feature(ability_name)
+        if feature_data and feature_data.get("uses") is not None and feature_data.get("refresh_on") is not None:
+            self.used_abilities_this_rest.add(ability_name)
+
+    def reset_ability_uses_on_rest(self, rest_type="long"):
+        abilities_to_clear_from_set = set()
+        for ability_name_used in list(self.used_abilities_this_rest):
+            feature_data = self.get_class_feature(ability_name_used)
+            if feature_data:
+                refresh_condition = feature_data.get("refresh_on")
+                if refresh_condition == "short_or_long_rest":
+                    abilities_to_clear_from_set.add(ability_name_used)
+                elif refresh_condition == "long_rest" and rest_type == "long":
+                    abilities_to_clear_from_set.add(ability_name_used)
+            else: abilities_to_clear_from_set.add(ability_name_used)
+        for ab_name in abilities_to_clear_from_set:
+            if ab_name in self.used_abilities_this_rest:
+                 self.used_abilities_this_rest.remove(ab_name)
+
+    def perform_long_rest(self):
+        self.current_hp = self.max_hp
+        self.reset_ability_uses_on_rest(rest_type="long")
+        return "You feel fully rested and revitalized."
+
+    def reset_turn_actions(self):
+        self.has_taken_action_this_turn = False
+
+    def use_second_wind(self):
+        if self.player_class_name != "Fighter": return "Only Fighters can use Second Wind."
+        feature_name = "Second Wind"
+        feature_data = self.get_class_feature(feature_name)
+        if not feature_data: return "You do not seem to have the Second Wind ability."
+
+        if self.has_taken_action_this_turn:
+            return "You have already taken your action this turn."
+
+        if not self.can_use_ability(feature_name):
+            return "You have already used Second Wind. You must complete a short or long rest before using it again."
+
+        heal_dice = feature_data.get("effect_dice", "1d10"); base_heal = roll_dice(heal_dice)
+        level_bonus = self.level if feature_data.get("level_scaling_property") == "fighter_level_bonus_to_heal" else 0
+        total_heal = base_heal + level_bonus; actual_healed_amount = 0
+
+        if self.current_hp < self.max_hp:
+            actual_healed_amount = min(total_heal, self.max_hp - self.current_hp)
+            self.current_hp += actual_healed_amount
+        else:
+            self.mark_ability_used(feature_name)
+            self.has_taken_action_this_turn = True
+            return "You use Second Wind, but you are already at maximum HP!"
+
+        self.mark_ability_used(feature_name)
+        self.has_taken_action_this_turn = True
+        return f"You use Second Wind and regain {actual_healed_amount} HP. (Rolled {base_heal} from {heal_dice}, +{level_bonus} level bonus = {total_heal} potential)."
+
+    def use_dash(self, direction_name, world_ref):
+        if not (self.player_class_name == "Rogue" and self.level >= 2):
+            return {"success": False, "message": "Only Rogues of level 2 or higher can Dash."}
+        cunning_action_feature = self.get_class_feature("Cunning Action")
+        if not cunning_action_feature or "Dash" not in cunning_action_feature.get("grants_abilities", []):
+            return {"success": False, "message": "You do not have the Cunning Action: Dash ability."}
+        if self.has_taken_action_this_turn:
+            return {"success": False, "message": "You have already taken an action this turn."}
+        if not self.room:
+            return {"success": False, "message": "You are not in a valid room to dash from."}
+
+        current_room_obj = self.room
+        room1_id = current_room_obj.exits.get(direction_name)
+        if not room1_id:
+            return {"success": False, "message": f"You cannot dash {direction_name} - there is no exit there."}
+        room1_obj = world_ref.get(room1_id)
+        if not room1_obj:
+            self.has_taken_action_this_turn = True
+            return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} into an unfamiliar passage..."}
+        room2_id = room1_obj.exits.get(direction_name)
+        room2_obj = world_ref.get(room2_id) if room2_id else None
+        self.has_taken_action_this_turn = True
+        if room2_obj:
+            return {"success": True, "rooms_moved": 2, "final_room_id": room2_id, "message": f"You swiftly dash {direction_name} two rooms ahead!"}
+        else:
+            return {"success": True, "rooms_moved": 1, "final_room_id": room1_id, "message": f"You dash {direction_name} one room ahead."}
+
+    def get_spell_details(self, spell_name):
+        if not self.player_class_name or not CLASSES_DATA: return None
+        class_data = CLASSES_DATA.get(self.player_class_name)
+        if not class_data: return None
+        known_cantrips = class_data.get("known_cantrips", [])
+        for cantrip_data in known_cantrips:
+            if cantrip_data.get("name", "").lower() == spell_name.lower():
+                return cantrip_data
+        return None
+
+    def get_spell_attack_bonus(self):
+        if not self.spellcasting_ability:
+            print(f"Warning: Player {self.name} has no spellcasting_ability for class {self.player_class_name}.")
+            return self.get_stat_modifier("INT")
+        modifier = self.get_stat_modifier(self.spellcasting_ability)
+        return modifier + self.proficiency_bonus
+
+    def cast_spell_attack(self, spell_name, target_mob, combat_resolver, current_round_counter=0):
+        """Generic handler for spell attacks like Fire Bolt, Ray of Frost."""
+        spell_data = self.get_spell_details(spell_name)
+        if not spell_data: return [f"You do not know the spell '{spell_name}'."]
+
+        # Check if the class can cast this specific spell (e.g. Wizard for Fire Bolt/Ray of Frost)
+        # This is a simple check; a more robust system would check a player's actual known/prepared spell list.
+        if self.player_class_name == "Wizard" and spell_name not in [c.get("name") for c in CLASSES_DATA.get("Wizard", {}).get("known_cantrips", [])]:
+             return [f"As a {self.player_class_name}, you don't know '{spell_name}' directly."]
+        # Add similar checks for other classes if they get these spells.
+
+        if spell_data.get("attack_type") != "spell_attack_roll":
+            return [f"'{spell_name}' is not an attack roll spell you can cast this way."]
+
+        if self.has_taken_action_this_turn: return ["You have already taken an action this turn."]
+        if not target_mob or not hasattr(target_mob, 'is_alive') or not target_mob.is_alive(): return ["You need a living target."]
+
+        spell_range_type = spell_data.get("range", "same_room")
+        if spell_range_type == "same_room":
+            if not self.room or not hasattr(target_mob, 'room') or self.room.id != target_mob.room.id:
+                return [f"{target_mob.name} is not in range for {spell_name}."]
+
+        spell_attack_bonus = self.get_spell_attack_bonus()
+        damage_dice = spell_data.get("damage", "0")
+        damage_type = spell_data.get("damage_type", "unknown")
+
+        attack_stat_mod_override_for_damage = 0 # Default for most cantrips
+        if spell_data.get("add_ability_mod_to_damage", False):
+            if self.spellcasting_ability:
+                attack_stat_mod_override_for_damage = self.get_stat_modifier(self.spellcasting_ability)
+            else: # Should not happen if can cast
+                attack_stat_mod_override_for_damage = self.get_stat_modifier("INT")
+
+
+        self.has_taken_action_this_turn = True
+
+        messages = [f"{ANSI_YELLOW}You cast {spell_name} at {target_mob.name}!{ANSI_RESET}"]
+
+        attack_outcome_messages = combat_resolver(
+            attacker=self, defender=target_mob,
+            attack_bonus_override=spell_attack_bonus,
+            damage_dice_override=damage_dice,
+            damage_type_override=damage_type,
+            attack_stat_mod_override=attack_stat_mod_override_for_damage
+        )
+        messages.extend(attack_outcome_messages)
+
+        hit_success = False
+        if attack_outcome_messages:
+            # Check if any message indicates a hit or crit, but not a miss.
+            # This is a bit fragile; ideally resolve_attack would return structured hit status.
+            for msg_line in attack_outcome_messages:
+                msg_line_lower = msg_line.lower()
+                if ("hits" in msg_line_lower or "critical hit" in msg_line_lower) and \
+                   "misses" not in msg_line_lower and "miss" not in msg_line_lower:
+                    hit_success = True
+                    break
+
+        if hit_success and spell_data.get("effects_on_hit"):
+            for effect_data in spell_data["effects_on_hit"]:
+                effect_to_apply = effect_data.copy()
+                effect_to_apply["applied_round"] = current_round_counter
+                if hasattr(target_mob, 'apply_status_effect'):
+                    target_mob.apply_status_effect(effect_to_apply)
+                    messages.append(f"{target_mob.name} is affected by {effect_data.get('type')} ({effect_data.get('amount')})!")
+        return messages
+
+    def cast_fire_bolt(self, target_mob, combat_resolver, current_round_counter=0):
+        if self.player_class_name != "Wizard":
+            return ["Only Wizards can cast Fire Bolt this way currently."]
+        return self.cast_spell_attack("Fire Bolt", target_mob, combat_resolver, current_round_counter)
+
+    def cast_ray_of_frost(self, target_mob, combat_resolver, current_round_counter=0):
+        if self.player_class_name != "Wizard":
+            return ["Only Wizards can cast Ray of Frost this way currently."]
+        return self.cast_spell_attack("Ray of Frost", target_mob, combat_resolver, current_round_counter)
 
     def equip_item(self, item_to_equip_ref, target_slot_key=None):
         item_data=None; found_in_inventory_ref=None
@@ -216,9 +488,6 @@ class Player:
         self.inventory.append(item_to_remove); self.equipment[slot_name]=None
         self.recalculate_all_stats()
         msg=f"You remove {item_to_remove.get('name','item')} from {slot_name}."
-        # For remove command, message is handled by command handler based on return type.
-        # if not _called_from_equip and hasattr(self.user,'send_message'):self.user.send_message(msg)
-        # print(f"INFO: {self.name} unequipped {item_to_remove.get('name', 'item')} from {slot_name}.") # Server log
         return item_to_remove
 
     def display_sheet(self):
@@ -248,43 +517,176 @@ class Player:
             item_name = item.get('name', 'Nothing') if item else f"{ANSI_RED}Nothing{ANSI_RESET}"
             if item and item_name != f"{ANSI_RED}Nothing{ANSI_RESET}": item_name = f"{ANSI_GREEN}{item_name}{ANSI_RESET}"
             sheet.append(f"  {slot:<20}: {item_name}")
+
+        sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
+        sheet.append("Skills: (Bonus) [* Proficient]")
+        sheet.append(f"{ANSI_GREEN}{'-' * 30}{ANSI_RESET}")
+        num_skills = len(Player.ALL_SKILLS)
+        mid_point = (num_skills + 1) // 2
+        for i in range(mid_point):
+            skill1_name = Player.ALL_SKILLS[i]
+            skill1_bonus = self.get_skill_bonus(skill1_name)
+            skill1_prof_char = "*" if skill1_name in self.skill_proficiencies else " "
+            skill1_bonus_str = f"+{skill1_bonus}" if skill1_bonus >= 0 else str(skill1_bonus)
+            skill1_display = f"  {skill1_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill1_name, '???'):<3}) [{skill1_prof_char}] {skill1_bonus_str:>3}"
+            if i + mid_point < num_skills:
+                skill2_name = Player.ALL_SKILLS[i + mid_point]
+                skill2_bonus = self.get_skill_bonus(skill2_name)
+                skill2_prof_char = "*" if skill2_name in self.skill_proficiencies else " "
+                skill2_bonus_str = f"+{skill2_bonus}" if skill2_bonus >= 0 else str(skill2_bonus)
+                skill2_display = f"  {skill2_name:<18} ({Player.SKILL_TO_ABILITY_MAP.get(skill2_name, '???'):<3}) [{skill2_prof_char}] {skill2_bonus_str:>3}"
+                sheet.append(f"{skill1_display.ljust(40)} {skill2_display}")
+            else:
+                sheet.append(skill1_display)
+
         sheet.append(f"{ANSI_GREEN}--- End of Sheet ---{ANSI_RESET}")
         return "\n".join(sheet)
 
     def display_inventory(self):
-        """Formats and returns the player's inventory listing."""
-        if not self.inventory:
-            return "Your inventory is empty."
-
+        if not self.inventory: return "Your inventory is empty."
         inventory_list = [f"{ANSI_GREEN}--- Your Inventory ---{ANSI_RESET}"]
-        # Current inventory stores item data dicts or item_ids (if loaded from save)
-        # A more robust system would use ItemInstance objects with quantity
-        # For now, list names, assuming quantity 1 for each entry if not specified
         for item_ref in self.inventory:
             item_name = "Unknown Item"
-            if isinstance(item_ref, dict): # Item data dict
+            if isinstance(item_ref, dict):
                 item_name = item_ref.get("name", "Unnamed Item")
-            elif isinstance(item_ref, str): # Item ID
-                # Try to look up in ITEMS_DATA if inventory stores IDs
+            elif isinstance(item_ref, str):
                 master_item_data = ITEMS_DATA.get(item_ref)
-                if master_item_data:
-                    item_name = master_item_data.get("name", item_ref)
-                else:
-                    item_name = item_ref # Show ID if not found
+                if master_item_data: item_name = master_item_data.get("name", item_ref)
+                else: item_name = item_ref
             inventory_list.append(f"- {item_name}")
-
         inventory_list.append(f"{ANSI_GREEN}--------------------{ANSI_RESET}")
         return "\n".join(inventory_list)
 
-```
-**Changes made to `player.py`:**
-1.  **`display_inventory()` method added**:
-    *   Checks if `self.inventory` is empty.
-    *   If not, it iterates through `self.inventory`.
-    *   It handles two cases for items in inventory:
-        *   If an item is a dictionary (as it would be if unequipped), it gets the "name".
-        *   If an item is a string (placeholder for if inventory stores item IDs from a save file), it tries to look up the name in `ITEMS_DATA`, defaulting to showing the ID.
-    *   Formats the list with a header and footer.
-    *   (Note: This basic version doesn't handle item quantities or stacking explicitly. A more advanced inventory would use `ItemInstance` objects.)
+    def is_alive(self):
+        return self.current_hp > 0
 
-Now, for the `main.py` part.
+    def take_damage(self, amount, attacker=None):
+        self.current_hp -= amount
+        if self.current_hp <= 0:
+            self.current_hp = 0
+            self.handle_death(attacker)
+
+    def handle_death(self, killer=None):
+        if self.is_dead: # Already processed death
+            return
+
+        self.is_dead = True
+        self.current_hp = 0 # Ensure HP is 0
+        self.in_combat = False
+
+        # Clear target from the mob's perspective if the mob was targeting this player
+        if self.target and hasattr(self.target, 'target') and self.target.target == self:
+            self.target.target = None
+            self.target.in_combat = False # Mob should leave combat if its target dies
+
+        self.target = None # Clear player's target
+
+        killer_name = "unknown causes"
+        if killer:
+            killer_name = killer.name if hasattr(killer, 'name') else str(killer)
+
+        print(f"[INFO] Player {self.name} has died (killed by {killer_name}).")
+
+        death_messages = [
+            f"{ANSI_RED}Darkness envelops you as your life force fades away... You have been slain by {killer_name}.{ANSI_RESET}",
+            f"{ANSI_RED}A final, ragged breath escapes your lips. {killer_name} stands victorious over your fallen form.{ANSI_RESET}",
+            f"{ANSI_RED}Your vision blurs and the world spins... {killer_name}'s blow was fatal.{ANSI_RESET}",
+            f"{ANSI_RED}You have fallen in battle, your spirit torn from its mortal shell by {killer_name}.{ANSI_RESET}",
+            f"{ANSI_RED}The cold grip of death takes you. Your journey ends here, thanks to {killer_name}.{ANSI_RESET}"
+        ]
+        message_to_send = random.choice(death_messages)
+        if hasattr(self.user, 'send_message'):
+            self.user.send_message(message_to_send)
+            self.user.send_message(f"{ANSI_YELLOW}Your soul lingers. Type 'respawn' to return to the Church of Testing, or 'wait' to await help (you will automatically respawn after 5 minutes if no help arrives). Type 'quit' to embrace the void.{ANSI_RESET}")
+
+    def attempt_respawn(self):
+        if not self.is_dead:
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message("You are already among the living!")
+            return False
+
+        if hasattr(self.user, 'send_message'):
+            self.user.send_message(f"{ANSI_YELLOW}You feel a pull back to the mortal coil. Do you wish to respawn at the Church of Testing? (yes/no){ANSI_RESET}")
+
+        response = None
+        if hasattr(self.user, 'read_line'):
+            response = self.user.read_line() # This assumes TempUser has read_line
+
+        if response and response.strip().lower() == "yes":
+            self.is_dead = False
+            self.current_hp = max(1, self.max_hp // 4)
+            self.room_id = "start" # Respawn to the starting room (Church of Testing)
+            self.in_combat = False # Explicitly clear combat state on respawn
+            self.target = None     # Explicitly clear target on respawn
+
+            resurrection_messages = [
+                f"{ANSI_GREEN}A divine light envelops you, and you feel warmth return to your limbs! You find yourself in a holy place.{ANSI_RESET}",
+                f"{ANSI_GREEN}You gasp as life surges back into your form, the spectral cold receding. You are alive!{ANSI_RESET}",
+                f"{ANSI_GREEN}With a shudder, your spirit reattaches to your form. You awaken, weakened but alive, in the Church of Testing.{ANSI_RESET}"
+            ]
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(random.choice(resurrection_messages))
+            return True
+        else:
+            if hasattr(self.user, 'send_message'):
+                self.user.send_message(f"{ANSI_YELLOW}You decide to linger in the spirit world a while longer.{ANSI_RESET}")
+            return False
+
+    def add_item_to_inventory(self, item_instance_or_dict):
+        self.inventory.append(item_instance_or_dict)
+        name_to_show = "item"
+        if hasattr(item_instance_or_dict, 'item_blueprint'):
+            name_to_show = item_instance_or_dict.item_blueprint.name
+        elif isinstance(item_instance_or_dict, dict):
+            name_to_show = item_instance_or_dict.get("name", "item")
+        return f"You pick up {name_to_show}."
+
+    def remove_item_from_inventory(self, item_name_or_id, quantity=1):
+        item_to_remove_idx = -1
+        item_instance_found = None
+        for i, inst in enumerate(self.inventory):
+            current_item_name = ""; current_item_id = ""
+            if hasattr(inst, 'item_blueprint'):
+                current_item_name = inst.item_blueprint.name.lower()
+                current_item_id = inst.item_blueprint.id.lower()
+            elif isinstance(inst, dict):
+                current_item_name = inst.get("name", "").lower()
+                current_item_id = inst.get("id", "").lower()
+            if current_item_name == item_name_or_id.lower() or current_item_id == item_name_or_id.lower():
+                item_to_remove_idx = i
+                item_instance_found = inst
+                break
+        if item_instance_found:
+            self.inventory.pop(item_to_remove_idx)
+            return item_instance_found
+        return f"You don't have '{item_name_or_id}'."
+
+    def get_attack_details(self):
+        attack_stat = "STR"; damage_dice = "1d4"; damage_type = "bludgeoning"
+        weapon = self.equipment.get(Player.EQUIPMENT_SLOT_WEAPON_MAIN)
+        is_proficient = True
+        if weapon:
+            props = weapon.get("properties", {})
+            damage_dice = props.get("damage_dice", damage_dice)
+            damage_type = props.get("damage_type", damage_type)
+            if props.get("finesse"):
+                if self.get_stat_score("DEX") > self.get_stat_score("STR"):
+                    attack_stat = "DEX"
+        else:
+            if self.player_class_name == "Monk" and self.level > 0:
+                if self.level < 5: damage_dice = "1d4"
+                elif self.level < 11: damage_dice = "1d6"
+                elif self.level < 17: damage_dice = "1d8"
+                else: damage_dice = "1d10"
+                if self.get_stat_score("DEX") > self.get_stat_score("STR"):
+                    attack_stat = "DEX"
+            is_proficient = True
+        attack_bonus_mod = self.get_stat_modifier(attack_stat)
+        attack_bonus = attack_bonus_mod
+        if is_proficient: attack_bonus += self.proficiency_bonus
+        return {
+            "attack_bonus": attack_bonus,
+            "damage_dice": damage_dice,
+            "damage_type": damage_type,
+            "stat_modifier": attack_bonus_mod
+        }

@@ -1,6 +1,7 @@
 {
   "start": {
-    "description": "You stand in a quiet forest clearing. Birds chirp overhead. Exits lead north and east.",
+    "name": "Church of Testing",
+    "description": "You find yourself in a serene sanctuary, the air filled with a faint scent of incense. This is a place of healing and rebirth. A soft light emanates from a simple altar. Exits lead north and east from the church grounds.",
     "exits": {
       "north": "mountain_path",
       "east": "river_bank",
